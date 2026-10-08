@@ -1,22 +1,24 @@
 import hashlib
-import json
-import math
 import re
-from typing import Any, Dict, List, Tuple, Type, TypeVar
+from typing import Dict, List, Tuple, Type, TypeVar
 import numpy as np
 from pydantic import BaseModel
 from app.schemas.extraction import InvoiceExtractionSchema, InvoiceLineSchema
-from app.services.llm.base import LLMProvider
 
 T = TypeVar("T", bound=BaseModel)
 
 
 class MockLLMProvider:
     """
-    High-fidelity deterministic Mock LLM Provider for local development, CI/CD, and offline testing.
+    Deterministic Mock LLM Provider for local development, CI/CD, and offline testing ONLY.
+    STRICTLY PROHIBITED IN PRODUCTION ENVIRONMENTS.
     Provides schema-validated extractions, realistic field confidences, normalized vector embeddings,
-    and prompt-injection safety defenses.
+    and prompt-injection safety defenses for regression testing.
     """
+
+    usage_source: str = "estimated"
+    provider: str = "mock"
+    model: str = "mock-agent-v1"
 
     async def generate(self, prompt: str, system: str = "") -> str:
         # Check for prompt injection attempts in prompt
@@ -43,7 +45,9 @@ class MockLLMProvider:
     async def extract_structured(self, text: str, schema: Type[T]) -> Tuple[T, Dict[str, float]]:
         """Extracts structured invoice or PO data with realistic field confidence scores."""
         # Check if text is poor quality or handwriting
-        is_poor_quality = any(k in text.lower() for k in ["poor scan", "handwritten", "blurry", "low_quality", "smudge"])
+        is_poor_quality = any(
+            k in text.lower() for k in ["poor scan", "handwritten", "blurry", "low_quality", "smudge"]
+        )
 
         # Invoice number pattern
         inv_match = re.search(r"(?:invoice\s*(?:#|no|number)\s*[:\s]+)([A-Z0-9\-]+)", text, re.IGNORECASE)
@@ -60,7 +64,9 @@ class MockLLMProvider:
         vendor_name = vendor_match.group(1).strip() if vendor_match else "Acme Industrial Supplies"
 
         # Check total amount (avoid matching 'subtotal')
-        total_match = re.search(r"\b(?:total(?:\s+amount)?(?:\s+due)?|amount due|balance)\b[:\s]*\$?([0-9,]+\.?[0-9]*)", text, re.IGNORECASE)
+        total_match = re.search(
+            r"\b(?:total(?:\s+amount)?(?:\s+due)?|amount due|balance)\b[:\s]*\$?([0-9,]+\.?[0-9]*)", text, re.IGNORECASE
+        )
         if total_match:
             try:
                 total_val = float(total_match.group(1).replace(",", ""))

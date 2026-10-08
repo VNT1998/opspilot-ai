@@ -98,7 +98,12 @@ async def test_security_matrix_role_boundaries(
     res_ops_idx = await client.post(
         "/api/v1/knowledge/index",
         headers={"Authorization": f"Bearer {ops_token}"},
-        json={"title": "Ops SOP", "content": "Approved standard SOP content for finance", "doc_type": "policy", "department": "operations"},
+        json={
+            "title": "Ops SOP",
+            "content": "Approved standard SOP content for finance",
+            "doc_type": "policy",
+            "department": "operations",
+        },
     )
     assert res_ops_idx.status_code == 201
 

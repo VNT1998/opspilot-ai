@@ -1,11 +1,13 @@
+import re
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
-from app.models.erp import Invoice, PurchaseOrder, Vendor
+from app.models.erp import Invoice, PurchaseOrder
 from app.schemas.extraction import InvoiceExtractionSchema
 from app.schemas.validation import BusinessValidationResult, ValidationFinding
+from app.services.validation.policies import requires_high_value_approval, within_po_tolerance
 
 settings = get_settings()
 
@@ -20,7 +22,7 @@ def to_decimal(val: Any) -> Decimal:
 class ValidationEngine:
     """
     Deterministic rule-based validation engine.
-    Ensures mathematical consistency, PO 3-way matching, tolerance verification,
+    Ensures mathematical consistency, PO invoice-to-PO matching, tolerance verification,
     and policy threshold checks without relying on LLM arithmetic.
     """
 
@@ -32,11 +34,42 @@ class ValidationEngine:
         tenant_id: str,
         extraction: InvoiceExtractionSchema,
         field_confidences: Optional[Dict[str, float]] = None,
+        raw_text: Optional[str] = None,
     ) -> BusinessValidationResult:
         field_confidences = field_confidences or {}
         findings: List[ValidationFinding] = []
         requires_review = False
         routing_reasons: List[str] = []
+
+        # 0. Check for adversarial prompt injection patterns in raw text and fields
+        text_to_scan = (raw_text or "") + " " + (extraction.vendor_name or "") + " " + (extraction.invoice_number or "")
+        if extraction.line_items:
+            for item in extraction.line_items:
+                text_to_scan += " " + (item.description or "")
+
+        injection_patterns = [
+            r"ignore\s+(all\s+|previous\s+|prior\s+)?instructions",
+            r"system\s+(override|instruction|prompt)",
+            r"approve\s+(automatically|immediately|without\s+validation)",
+            r"skip\s+(validation|check|verification)",
+            r"bypass\s+(security|authorization|rules)",
+            r"maintenance\s+debug\s+mode",
+            r"debug\s+mode\s+enabled",
+            r"developer\s+(mode|instruction)",
+            r"role\s+escalation",
+            r"unlimited\s+approval\s+authority",
+        ]
+        if any(re.search(p, text_to_scan, re.IGNORECASE) for p in injection_patterns):
+            findings.append(
+                ValidationFinding(
+                    rule_name="prompt_injection_defense",
+                    passed=False,
+                    severity="ERROR",
+                    message="Adversarial prompt injection pattern detected in document content. Blocked automated straight-through execution.",
+                )
+            )
+            requires_review = True
+            routing_reasons.append("Adversarial prompt injection pattern detected")
 
         # 1. Check Mandatory Fields
         if not extraction.invoice_number or extraction.invoice_number.strip() == "":
@@ -93,7 +126,9 @@ class ValidationEngine:
         # 3. Check Line Items Sum vs Subtotal
         if extraction.line_items:
             line_sum_dec = sum(
-                (to_decimal(item.quantity) * to_decimal(item.unit_price)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                (to_decimal(item.quantity) * to_decimal(item.unit_price)).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
                 for item in extraction.line_items
             )
             line_diff_dec = abs(line_sum_dec - subtotal_dec)
@@ -148,18 +183,14 @@ class ValidationEngine:
                 po_total_dec = to_decimal(po.total_amount)
                 variance_amount_dec = abs(total_dec - po_total_dec)
                 variance_percent_dec = (
-                    ((variance_amount_dec / po_total_dec) * Decimal("100.00")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                    ((variance_amount_dec / po_total_dec) * Decimal("100.00")).quantize(
+                        Decimal("0.01"), rounding=ROUND_HALF_UP
+                    )
                     if po_total_dec > Decimal("0.00")
                     else Decimal("0.00")
                 )
 
-                tolerance_pct_dec = to_decimal(settings.VARIANCE_TOLERANCE_PERCENT)
-                tolerance_abs_dec = to_decimal(settings.VARIANCE_TOLERANCE_ABSOLUTE)
-
-                within_percent = variance_percent_dec <= tolerance_pct_dec
-                within_abs = variance_amount_dec <= tolerance_abs_dec
-
-                if within_percent and within_abs:
+                if within_po_tolerance(variance_percent_dec, variance_amount_dec):
                     findings.append(
                         ValidationFinding(
                             rule_name="po_tolerance_check",
@@ -195,7 +226,7 @@ class ValidationEngine:
 
         # 5. Check High-Value Policy Threshold (>= $10,000)
         high_value_dec = to_decimal(settings.HIGH_VALUE_THRESHOLD)
-        if total_dec >= high_value_dec:
+        if requires_high_value_approval(total_dec):
             findings.append(
                 ValidationFinding(
                     rule_name="high_value_policy_threshold",

@@ -1,15 +1,14 @@
 import json
-from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.deps import get_current_user, require_permission
+from app.api.deps import require_permission
+from app.core.rate_limit import rate_limit
 from app.core.rbac import Permission
 from app.db.session import get_db
 from app.models.knowledge import KnowledgeDocument
 from app.models.user import User
 from app.schemas.knowledge import (
-    Citation,
     KnowledgeIndexRequest,
     KnowledgeSearchRequest,
     KnowledgeSearchResponse,
@@ -25,6 +24,7 @@ async def index_knowledge_document(
     body: KnowledgeIndexRequest,
     current_user: User = Depends(require_permission(Permission.KNOWLEDGE_INDEX)),
     db: AsyncSession = Depends(get_db),
+    _rl: bool = Depends(rate_limit(requests_per_minute=20)),
 ):
     """Chunks, embeds, and indexes a corporate policy/SOP document for ACL-gated retrieval."""
     llm = get_llm_provider()
@@ -53,6 +53,7 @@ async def search_knowledge(
     body: KnowledgeSearchRequest,
     current_user: User = Depends(require_permission(Permission.KNOWLEDGE_SEARCH)),
     db: AsyncSession = Depends(get_db),
+    _rl: bool = Depends(rate_limit(requests_per_minute=40)),
 ):
     """
     Executes ACL-aware hybrid search (dense vector + lexical match)

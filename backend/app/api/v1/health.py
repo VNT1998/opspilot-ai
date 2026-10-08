@@ -10,7 +10,7 @@ router = APIRouter(tags=["Health & Status"])
 
 @router.get("/health")
 async def health_check(db: AsyncSession = Depends(get_db)):
-    """Health and readiness probe for container orchestrators and monitoring agents."""
+    """Lightweight liveness probe for container orchestrators."""
     db_ok = False
     try:
         await db.execute(text("SELECT 1"))
@@ -23,5 +23,36 @@ async def health_check(db: AsyncSession = Depends(get_db)):
         "service": settings.PROJECT_NAME,
         "version": settings.PROJECT_VERSION,
         "database": "connected" if db_ok else "disconnected",
+        "environment": settings.ENVIRONMENT,
+    }
+
+
+@router.get("/ready")
+async def readiness_check(db: AsyncSession = Depends(get_db)):
+    """Readiness probe checking database and storage subsystem status."""
+    checks = {}
+    is_ready = True
+
+    # 1. Database connection check
+    try:
+        await db.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception as e:
+        checks["database"] = f"error: {str(e)}"
+        is_ready = False
+
+    # 2. Storage provider check
+    try:
+        from app.services.storage import get_storage_provider
+
+        _ = get_storage_provider()
+        checks["storage"] = f"ok ({settings.STORAGE_TYPE})"
+    except Exception as e:
+        checks["storage"] = f"error: {str(e)}"
+        is_ready = False
+
+    return {
+        "status": "ready" if is_ready else "not_ready",
+        "checks": checks,
         "environment": settings.ENVIRONMENT,
     }

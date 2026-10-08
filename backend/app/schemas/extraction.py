@@ -1,4 +1,4 @@
-from datetime import date
+import json
 from typing import Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -24,8 +24,6 @@ class InvoiceExtractionSchema(BaseModel):
     po_number: Optional[str] = Field(None, description="Referenced Purchase Order number")
     line_items: List[InvoiceLineSchema] = Field(default_factory=list, description="Extracted line items")
 
-
-import json
 
 class DocumentExtractionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

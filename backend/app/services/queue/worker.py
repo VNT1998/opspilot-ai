@@ -1,10 +1,7 @@
 import asyncio
-import json
-import logging
 import time
 from typing import Any, Dict, Optional
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.logging import logger
 import app.db.session as session_module
@@ -15,18 +12,26 @@ from app.services.agents.state import OpsPilotState
 from app.services.llm.factory import get_llm_provider
 from app.services.storage import get_storage_provider
 
+from app.services.queue.base import BaseQueueBackend
+from app.services.queue.in_memory import InMemoryQueueBackend
+from app.services.queue.redis import RedisQueueBackend
+
 settings = get_settings()
 
 
 class JobQueueWorker:
     """
     Durable asynchronous queue worker with bounded retries, exponential backoff,
-    dead-letter escalation, and idempotent job execution.
+    dead-letter escalation, and idempotent job execution across in-memory and Redis backends.
     """
 
-    def __init__(self):
-        self._queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
-        self._dlq: list[Dict[str, Any]] = []
+    def __init__(self, backend: Optional[BaseQueueBackend] = None):
+        if backend is not None:
+            self.backend = backend
+        elif settings.USE_IN_MEMORY_QUEUE or settings.WORKER_MODE == "in_process":
+            self.backend = InMemoryQueueBackend()
+        else:
+            self.backend = RedisQueueBackend(redis_url=settings.REDIS_URL)
         self._is_running = False
         self._worker_task: Optional[asyncio.Task] = None
 
@@ -54,7 +59,7 @@ class JobQueueWorker:
             "attempt": 1,
             "max_attempts": 3,
         }
-        await self._queue.put(job)
+        await self.backend.enqueue(job)
         logger.info(f"Enqueued document job: doc_id={document_id}, wf_id={workflow_run_id}")
         return workflow_run_id
 
@@ -145,10 +150,10 @@ class JobQueueWorker:
                         wf.retry_count = job["attempt"]
                         await db.commit()
                     await asyncio.sleep(backoff_delay)
-                    await self._queue.put(job)
+                    await self.backend.enqueue(job)
                 else:
                     logger.error(f"Job {wf_id} exceeded max retries. Routing to Dead Letter Queue (DLQ).")
-                    self._dlq.append(job)
+                    await self.backend.enqueue_dlq(job)
                     # Mark document as FAILED
                     doc.status = "FAILED"
                     if wf:
@@ -162,11 +167,12 @@ class JobQueueWorker:
     async def _worker_loop(self):
         while self._is_running:
             try:
-                job = await asyncio.wait_for(self._queue.get(), timeout=1.0)
+                job = await self.backend.dequeue(timeout=1.0)
+                if job is None:
+                    continue
                 await self._process_single_job(job)
-                self._queue.task_done()
-            except asyncio.TimeoutError:
-                continue
+                if hasattr(self.backend, "task_done"):
+                    self.backend.task_done()
             except Exception as e:
                 logger.error(f"Unexpected worker loop exception: {e}", exc_info=True)
 
@@ -185,6 +191,12 @@ class JobQueueWorker:
             except asyncio.CancelledError:
                 pass
         logger.info("Asynchronous JobQueueWorker stopped.")
+
+    async def get_queue_depth(self) -> int:
+        return await self.backend.get_depth()
+
+    async def get_dlq_depth(self) -> int:
+        return await self.backend.get_dlq_depth()
 
 
 _job_worker_instance = JobQueueWorker()

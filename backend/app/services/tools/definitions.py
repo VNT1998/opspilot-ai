@@ -1,23 +1,35 @@
+from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import List, Optional
 from pydantic import BaseModel, Field
+from app.core.rbac import Permission
 
 
-class ToolPermission(str, Enum):
-    READ_DOCUMENT = "document:read"
-    READ_PO = "document:read"
-    READ_POLICY = "knowledge:search"
-    READ_VENDOR = "document:read"
-    CALCULATE_VARIANCE = "document:read"
-    CREATE_REVIEW_TASK = "review:edit"
-    UPDATE_INVOICE = "review:approve"
-    SEND_NOTIFICATION = "document:read"
+class ToolRiskLevel(str, Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+
+class ToolMetadata(BaseModel):
+    name: str
+    description: str
+    required_permissions: List[Permission]
+    risk_level: ToolRiskLevel = ToolRiskLevel.LOW
+    side_effect: bool = False
+    idempotent: bool = True
+    requires_confirmation: bool = False
 
 
 class ToolCallContext(BaseModel):
     tenant_id: str
-    user_id: Optional[str] = "agent_system"
-    user_role: str = "admin"  # Role executed under
+    user_id: str
+    user_role: str
+    permissions: List[str] = Field(default_factory=list)
+    request_id: Optional[str] = None
+    workflow_run_id: Optional[str] = None
+    source: str = "agent"
 
 
 class GetDocumentInput(BaseModel):
@@ -37,8 +49,8 @@ class GetVendorInput(BaseModel):
 
 
 class CalculateVarianceInput(BaseModel):
-    invoice_total: float = Field(..., description="Total invoice amount")
-    po_total: float = Field(..., description="Purchase order total amount")
+    invoice_total: Decimal = Field(..., description="Total invoice amount")
+    po_total: Decimal = Field(..., description="Purchase order total amount")
 
 
 class CreateReviewTaskInput(BaseModel):

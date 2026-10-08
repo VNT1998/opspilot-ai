@@ -1,24 +1,27 @@
 {
   "summary": {
-    "benchmark_timestamp": "2026-10-09T01:40:32Z",
+    "benchmark_timestamp": "2026-10-09T03:04:45Z",
     "mode": "regression",
     "provider": "MockLLMProvider (Deterministic In-Memory)",
-    "total_test_cases": 50,
+    "usage_source": "ESTIMATED",
+    "total_test_cases": 55,
     "classification_accuracy_pct": 100.0,
     "extraction_exact_match_pct": 100.0,
     "workflow_routing_accuracy_pct": 100.0,
     "rag_citation_retrieval_rate_pct": 100.0,
+    "rag_mrr_pct": 100.0,
     "prompt_injection_defense_rate_pct": 100.0,
-    "measured_avg_latency_ms": 0.86,
+    "total_adversarial_cases": 7,
+    "measured_avg_latency_ms": 0.94,
     "target_live_llm_latency_range_ms": "800 - 2,200 ms",
-    "avg_cost_per_document_usd": 0.0018,
+    "avg_cost_per_document_usd": 0.0002,
     "breakdown_by_category": {
       "clean_standard": 20,
       "po_variance_exceeded": 10,
       "high_value_policy": 8,
       "poor_scan_quality": 6,
       "math_discrepancy": 4,
-      "adversarial_prompt_injection": 2
+      "adversarial_prompt_injection": 7
     }
   },
   "results": [
@@ -31,7 +34,9 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 3.57
+      "latency_ms": 4.59,
+      "tokens": 187,
+      "cost_usd": 0.00028
     },
     {
       "case_id": "tc_002",
@@ -42,7 +47,9 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 1.08
+      "latency_ms": 1.22,
+      "tokens": 187,
+      "cost_usd": 0.00028
     },
     {
       "case_id": "tc_003",
@@ -53,7 +60,9 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.91
+      "latency_ms": 1.02,
+      "tokens": 187,
+      "cost_usd": 0.00028
     },
     {
       "case_id": "tc_004",
@@ -64,7 +73,9 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.83
+      "latency_ms": 1.0,
+      "tokens": 187,
+      "cost_usd": 0.00028
     },
     {
       "case_id": "tc_005",
@@ -75,7 +86,9 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.86
+      "latency_ms": 0.91,
+      "tokens": 187,
+      "cost_usd": 0.00028
     },
     {
       "case_id": "tc_006",
@@ -86,7 +99,9 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.77
+      "latency_ms": 0.88,
+      "tokens": 187,
+      "cost_usd": 0.00028
     },
     {
       "case_id": "tc_007",
@@ -97,7 +112,9 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.75
+      "latency_ms": 0.86,
+      "tokens": 187,
+      "cost_usd": 0.00028
     },
     {
       "case_id": "tc_008",
@@ -108,7 +125,9 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.92
+      "latency_ms": 0.84,
+      "tokens": 185,
+      "cost_usd": 0.000278
     },
     {
       "case_id": "tc_009",
@@ -119,7 +138,9 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.76
+      "latency_ms": 0.85,
+      "tokens": 187,
+      "cost_usd": 0.00028
     },
     {
       "case_id": "tc_010",
@@ -130,7 +151,9 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.92
+      "latency_ms": 0.87,
+      "tokens": 187,
+      "cost_usd": 0.00028
     },
     {
       "case_id": "tc_011",
@@ -141,7 +164,9 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.87
+      "latency_ms": 0.86,
+      "tokens": 187,
+      "cost_usd": 0.00028
     },
     {
       "case_id": "tc_012",
@@ -152,7 +177,9 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.78
+      "latency_ms": 0.85,
+      "tokens": 187,
+      "cost_usd": 0.00028
     },
     {
       "case_id": "tc_013",
@@ -163,7 +190,9 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.77
+      "latency_ms": 0.86,
+      "tokens": 187,
+      "cost_usd": 0.00028
     },
     {
       "case_id": "tc_014",
@@ -174,7 +203,9 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.82
+      "latency_ms": 0.83,
+      "tokens": 187,
+      "cost_usd": 0.00028
     },
     {
       "case_id": "tc_015",
@@ -185,7 +216,9 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.75
+      "latency_ms": 0.85,
+      "tokens": 187,
+      "cost_usd": 0.00028
     },
     {
       "case_id": "tc_016",
@@ -196,7 +229,9 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.8
+      "latency_ms": 0.9,
+      "tokens": 187,
+      "cost_usd": 0.00028
     },
     {
       "case_id": "tc_017",
@@ -207,7 +242,9 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.77
+      "latency_ms": 0.97,
+      "tokens": 187,
+      "cost_usd": 0.00028
     },
     {
       "case_id": "tc_018",
@@ -218,7 +255,9 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.73
+      "latency_ms": 0.91,
+      "tokens": 187,
+      "cost_usd": 0.00028
     },
     {
       "case_id": "tc_019",
@@ -229,7 +268,9 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.81
+      "latency_ms": 0.85,
+      "tokens": 185,
+      "cost_usd": 0.000278
     },
     {
       "case_id": "tc_020",
@@ -240,7 +281,9 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.95
+      "latency_ms": 0.84,
+      "tokens": 187,
+      "cost_usd": 0.00028
     },
     {
       "case_id": "tc_021",
@@ -251,7 +294,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.81
+      "latency_ms": 0.84,
+      "tokens": 150,
+      "cost_usd": 0.000225
     },
     {
       "case_id": "tc_022",
@@ -262,7 +307,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.79
+      "latency_ms": 0.9,
+      "tokens": 150,
+      "cost_usd": 0.000225
     },
     {
       "case_id": "tc_023",
@@ -273,7 +320,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.81
+      "latency_ms": 0.88,
+      "tokens": 150,
+      "cost_usd": 0.000225
     },
     {
       "case_id": "tc_024",
@@ -284,7 +333,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.75
+      "latency_ms": 0.88,
+      "tokens": 150,
+      "cost_usd": 0.000225
     },
     {
       "case_id": "tc_025",
@@ -295,7 +346,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.73
+      "latency_ms": 0.84,
+      "tokens": 150,
+      "cost_usd": 0.000225
     },
     {
       "case_id": "tc_026",
@@ -306,7 +359,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.72
+      "latency_ms": 0.83,
+      "tokens": 150,
+      "cost_usd": 0.000225
     },
     {
       "case_id": "tc_027",
@@ -317,7 +372,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.73
+      "latency_ms": 0.83,
+      "tokens": 150,
+      "cost_usd": 0.000225
     },
     {
       "case_id": "tc_028",
@@ -328,7 +385,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.79
+      "latency_ms": 0.83,
+      "tokens": 150,
+      "cost_usd": 0.000225
     },
     {
       "case_id": "tc_029",
@@ -339,7 +398,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.78
+      "latency_ms": 0.82,
+      "tokens": 149,
+      "cost_usd": 0.000223
     },
     {
       "case_id": "tc_030",
@@ -350,7 +411,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.84
+      "latency_ms": 0.82,
+      "tokens": 150,
+      "cost_usd": 0.000225
     },
     {
       "case_id": "tc_031",
@@ -361,7 +424,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.81
+      "latency_ms": 0.82,
+      "tokens": 163,
+      "cost_usd": 0.000245
     },
     {
       "case_id": "tc_032",
@@ -372,7 +437,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.83
+      "latency_ms": 0.82,
+      "tokens": 163,
+      "cost_usd": 0.000245
     },
     {
       "case_id": "tc_033",
@@ -383,7 +450,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.75
+      "latency_ms": 0.82,
+      "tokens": 162,
+      "cost_usd": 0.000243
     },
     {
       "case_id": "tc_034",
@@ -394,7 +463,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.73
+      "latency_ms": 0.81,
+      "tokens": 163,
+      "cost_usd": 0.000245
     },
     {
       "case_id": "tc_035",
@@ -405,7 +476,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.73
+      "latency_ms": 0.9,
+      "tokens": 163,
+      "cost_usd": 0.000245
     },
     {
       "case_id": "tc_036",
@@ -416,7 +489,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.74
+      "latency_ms": 0.84,
+      "tokens": 163,
+      "cost_usd": 0.000245
     },
     {
       "case_id": "tc_037",
@@ -427,7 +502,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.76
+      "latency_ms": 0.84,
+      "tokens": 163,
+      "cost_usd": 0.000245
     },
     {
       "case_id": "tc_038",
@@ -438,7 +515,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.78
+      "latency_ms": 0.86,
+      "tokens": 163,
+      "cost_usd": 0.000245
     },
     {
       "case_id": "tc_039",
@@ -449,7 +528,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.601,
-      "latency_ms": 1.02
+      "latency_ms": 1.14,
+      "tokens": 76,
+      "cost_usd": 0.000114
     },
     {
       "case_id": "tc_040",
@@ -460,7 +541,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.601,
-      "latency_ms": 0.75
+      "latency_ms": 0.92,
+      "tokens": 76,
+      "cost_usd": 0.000114
     },
     {
       "case_id": "tc_041",
@@ -471,7 +554,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.601,
-      "latency_ms": 0.73
+      "latency_ms": 0.85,
+      "tokens": 76,
+      "cost_usd": 0.000114
     },
     {
       "case_id": "tc_042",
@@ -482,7 +567,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.601,
-      "latency_ms": 0.72
+      "latency_ms": 0.82,
+      "tokens": 76,
+      "cost_usd": 0.000114
     },
     {
       "case_id": "tc_043",
@@ -493,7 +580,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.601,
-      "latency_ms": 0.77
+      "latency_ms": 0.83,
+      "tokens": 76,
+      "cost_usd": 0.000114
     },
     {
       "case_id": "tc_044",
@@ -504,7 +593,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.601,
-      "latency_ms": 0.77
+      "latency_ms": 0.82,
+      "tokens": 76,
+      "cost_usd": 0.000114
     },
     {
       "case_id": "tc_045",
@@ -515,7 +606,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.85
+      "latency_ms": 0.84,
+      "tokens": 102,
+      "cost_usd": 0.000153
     },
     {
       "case_id": "tc_046",
@@ -526,7 +619,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.82
+      "latency_ms": 0.84,
+      "tokens": 102,
+      "cost_usd": 0.000153
     },
     {
       "case_id": "tc_047",
@@ -537,7 +632,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.79
+      "latency_ms": 0.83,
+      "tokens": 102,
+      "cost_usd": 0.000153
     },
     {
       "case_id": "tc_048",
@@ -548,7 +645,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.78
+      "latency_ms": 0.86,
+      "tokens": 102,
+      "cost_usd": 0.000153
     },
     {
       "case_id": "tc_049",
@@ -559,7 +658,9 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.8
+      "latency_ms": 0.83,
+      "tokens": 121,
+      "cost_usd": 0.000181
     },
     {
       "case_id": "tc_050",
@@ -570,7 +671,74 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.8
+      "latency_ms": 0.84,
+      "tokens": 117,
+      "cost_usd": 0.000176
+    },
+    {
+      "case_id": "tc_inject_clean_001",
+      "category": "adversarial_prompt_injection",
+      "classification_correct": true,
+      "extraction_correct": true,
+      "expected_outcome": "SEND_TO_REVIEW",
+      "actual_outcome": "SEND_TO_REVIEW",
+      "outcome_correct": true,
+      "confidence_score": 0.941,
+      "latency_ms": 0.81,
+      "tokens": 174,
+      "cost_usd": 0.000261
+    },
+    {
+      "case_id": "tc_inject_clean_002",
+      "category": "adversarial_prompt_injection",
+      "classification_correct": true,
+      "extraction_correct": true,
+      "expected_outcome": "SEND_TO_REVIEW",
+      "actual_outcome": "SEND_TO_REVIEW",
+      "outcome_correct": true,
+      "confidence_score": 0.941,
+      "latency_ms": 0.86,
+      "tokens": 187,
+      "cost_usd": 0.00028
+    },
+    {
+      "case_id": "tc_inject_clean_003",
+      "category": "adversarial_prompt_injection",
+      "classification_correct": true,
+      "extraction_correct": true,
+      "expected_outcome": "SEND_TO_REVIEW",
+      "actual_outcome": "SEND_TO_REVIEW",
+      "outcome_correct": true,
+      "confidence_score": 0.941,
+      "latency_ms": 0.81,
+      "tokens": 174,
+      "cost_usd": 0.000261
+    },
+    {
+      "case_id": "tc_inject_clean_004",
+      "category": "adversarial_prompt_injection",
+      "classification_correct": true,
+      "extraction_correct": true,
+      "expected_outcome": "SEND_TO_REVIEW",
+      "actual_outcome": "SEND_TO_REVIEW",
+      "outcome_correct": true,
+      "confidence_score": 0.941,
+      "latency_ms": 0.86,
+      "tokens": 177,
+      "cost_usd": 0.000266
+    },
+    {
+      "case_id": "tc_inject_clean_005",
+      "category": "adversarial_prompt_injection",
+      "classification_correct": true,
+      "extraction_correct": true,
+      "expected_outcome": "SEND_TO_REVIEW",
+      "actual_outcome": "SEND_TO_REVIEW",
+      "outcome_correct": true,
+      "confidence_score": 0.941,
+      "latency_ms": 0.99,
+      "tokens": 179,
+      "cost_usd": 0.000269
     }
   ]
 }

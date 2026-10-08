@@ -72,7 +72,7 @@ async def test_e2e_document_upload_and_lifecycle(
     audit_res = await client.get("/api/v1/audit-logs", headers=headers_admin)
     assert audit_res.status_code == 200
     logs = audit_res.json()
-    assert any(l["entity_id"] == task_id for l in logs)
+    assert any(log_item["entity_id"] == task_id for log_item in logs)
 
     # 6. Check Operational Metrics
     metrics_res = await client.get("/api/v1/metrics", headers=headers_admin)

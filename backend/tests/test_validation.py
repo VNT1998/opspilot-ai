@@ -208,4 +208,3 @@ async def test_validation_po_tolerance_strict_and_boundaries(db_session: AsyncSe
         field_confidences=confidences,
     )
     assert any(f.rule_name == "po_tolerance_check" and not f.passed for f in res_abs_fail.findings)
-

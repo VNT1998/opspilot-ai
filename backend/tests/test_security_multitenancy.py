@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_access_token, hash_password
 from app.models.document import Document
-from app.models.knowledge import KnowledgeChunk, KnowledgeDocument
 from app.models.review import ReviewTask
 from app.models.tenant import Tenant
 from app.models.user import User
@@ -149,7 +148,6 @@ async def test_cross_tenant_review_task_approval_denied(
     """
     Ensure Tenant Beta reviewer cannot approve or modify Tenant Alpha review tasks.
     """
-    headers_alpha = {"Authorization": f"Bearer {admin_token}"}
     headers_beta = {"Authorization": f"Bearer {setup_tenants_and_users['token_beta_reviewer']}"}
 
     # Create document and review task in Tenant Alpha

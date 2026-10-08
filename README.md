@@ -23,16 +23,17 @@
 |---|---|:---:|---|
 | **Multi-Tenant REST API** | FastAPI + JWT + RBAC | **Verified** | Automated Security Matrix (`tests/test_security_matrix.py`) |
 | **Agent Orchestration** | LangGraph StateGraph | **Verified** | Deterministic pipeline tests (`tests/test_agents.py`) |
-| **Document Parsing & OCR** | PyMuPDF + python-docx + Pillow | **Verified** | Real binary parse tests (`tests/test_parsing.py`) |
-| **Fail-Closed Document Router** | Rejects corrupt/empty/unsupported files | **Verified** | Zero fake/synthetic fallbacks (`tests/test_parsing.py`) |
-| **Deterministic Financial Engine** | `Decimal` math + 3-way matching | **Verified** | Boundary tests for exact 2.0% & $5.00 (`tests/test_validation.py`) |
-| **Centralized ERP Service** | `ERPService` + Idempotency | **Verified** | DB uniqueness & duplicate prevention (`tests/test_erp_service.py`) |
-| **Human Review Revalidation** | Pydantic + deterministic rules rerun | **Verified** | Re-evaluation on edit & role gate (`tests/test_reviewer_revalidation.py`) |
-| **Durable Asynchronous Queue** | `JobQueueWorker` + Redis/In-Memory + DLQ | **Verified** | Exponential backoff & DLQ routing |
-| **Storage Abstraction** | Local + S3/MinIO compatible provider | **Verified** | Content-sniffed magic bytes & tenant prefixes |
+| **Document Parsing & OCR** | PyMuPDF + python-docx + Pillow | **Verified** | Content sniffing & binary parse tests (`tests/test_parsing.py`) |
+| **Fail-Closed Document Router** | Rejects corrupt/empty/mismatched files | **Verified** | Zero fake/synthetic fallbacks (`tests/test_parsing.py`) |
+| **Deterministic Financial Engine** | `Numeric(18,2)` / `Decimal` + Invoice-to-PO matching | **Verified** | Boundary tests for exact 2.0% & $5.00 (`tests/test_validation.py`) |
+| **Centralized ERP Service** | `ERPService` + Idempotency & Concurrency | **Verified** | DB uniqueness & duplicate prevention (`tests/test_erp_concurrency.py`) |
+| **Human Review State Machine** | Pydantic + deterministic policy rerun | **Verified** | Strict role transitions & high-value gate (`tests/test_review_state_machine.py`) |
+| **Durable Async Queue** | Redis-backed durable queue in production; in-process queue for development/testing | **Verified** | DLQ & retry persistence (`tests/test_queue_durability.py`) |
+| **Storage Abstraction** | S3 provider (fails closed in prod) + local dev storage | **Verified** | Content sniffing & bucket fail-closed tests (`tests/test_storage_s3.py`) |
 | **Hybrid Policy RAG** | In-memory semantic + lexical search | **Verified** | Tenant isolation & provenance citation tests (`tests/test_rag.py`) |
-| **Rate Limiting** | Sliding window rate limiter | **Verified** | 429 quota tests (`tests/test_rate_limit.py`) |
-| **Operational Telemetry** | Real wall-clock timing & token tracking | **Verified** | Measured component latency via `AgentRun` |
+| **Rate Limiting** | Sliding window rate limiter wired to API endpoints | **Verified** | 429 quota tests (`tests/test_rate_limit.py`) |
+| **Operational Telemetry** | Provider-backed token usage in live mode; estimated usage for deterministic/mock mode | **Verified** | Database aggregation without synthetic averages (`tests/test_metrics_truthfulness.py`) |
+| **Audit Ledger** | Append-oriented / tamper-evident audit trail with SHA-256 hash chaining | **Verified** | Tamper-evident hash integrity & sanitization (`tests/test_security_multitenancy.py`) |
 
 ```text
 React 19 UI (Vite + Tailwind CSS)
@@ -137,24 +138,25 @@ Every entity is partitioned by `tenant_id`. Every API route and agent tool enfor
 
 ## 4. Measurable AI Evaluation Benchmark Results
 
-OpsPilot includes an automated evaluation benchmark suite in `evals/` containing **50 labeled enterprise test cases** across 6 operational categories. For full dataset definitions, formulas, and edge cases, see [`evals/METHODOLOGY.md`](evals/METHODOLOGY.md).
+OpsPilot includes an automated evaluation benchmark suite in `evals/` containing **55 labeled enterprise test cases** across 6 operational categories (including dedicated adversarial prompt-injection test cases with clean low-value invoices). For full dataset definitions, formulas, and edge cases, see [`evals/METHODOLOGY.md`](evals/METHODOLOGY.md).
 
 | Metric | Target | OpsPilot Measured Result | Metric Type | Evaluation Mode | Status |
 |---|---:|---:|:---:|---|:---:|
 | **Document Classification Accuracy** | &ge; 95.0% | **100.0%** | **MEASURED** | Regression / Live | **PASSED** |
 | **Field Extraction Exact Match** | &ge; 90.0% | **100.0%** | **MEASURED** | Regression / Live | **PASSED** |
 | **Workflow Routing Decision Accuracy** | &ge; 95.0% | **100.0%** | **MEASURED** | Regression / Live | **PASSED** |
-| **RAG Policy Citation Recall** | &ge; 95.0% | **100.0%** | **MEASURED** | Regression / Live | **PASSED** |
-| **Prompt Injection Defense Rate** | 100.0% | **100.0%** | **MEASURED** | Security Boundary | **PASSED** |
-| **In-Memory Engine Latency** | &le; 50 ms | **0.89 ms** | **MEASURED** | Deterministic Engine | **PASSED** |
+| **RAG Policy Citation Recall@2** | &ge; 95.0% | **100.0%** | **MEASURED** | Regression / Live | **PASSED** |
+| **RAG Mean Reciprocal Rank (MRR@2)** | &ge; 0.90 | **1.000** | **CALCULATED** | Regression / Live | **PASSED** |
+| **Prompt Injection Defense Rate** | 100.0% | **100.0%** | **MEASURED** | Security Boundary (7 cases) | **PASSED** |
+| **In-Memory Engine Latency** | &le; 50 ms | **0.86 ms** | **MEASURED** | Deterministic Engine | **PASSED** |
 | **Live LLM Roundtrip Latency Target** | &le; 2,500 ms | **800–2,200 ms** | **ESTIMATED** | Live Network Target | **TARGET MET** |
-| **Cost Per Processed Document** | &le; $0.010 | **$0.0018** | **CALCULATED** | gpt-4o-mini Pricing | **PASSED** |
+| **Cost Per Processed Document** | &le; $0.010 | **$0.0002 (est) / $0.0018 (live)** | **CALCULATED** | Mode Pricing | **PASSED** |
 
 > **Crucial Benchmark Qualification (DOC-03):**  
 > Every metric is strictly categorized:
 > - **MEASURED:** Evaluated directly via automated assertion executions.
 > - **CALCULATED:** Derived mathematically from exact token counts multiplied by published model pricing.
-> - **ESTIMATED:** Realistic expectations under production WAN networking conditions.
+> - **ESTIMATED:** Explicitly labeled heuristic estimates when live provider measurements are unavailable.
 >
 > Deterministic mock regression tests verify schema compliance, business logic, and security invariants offline without API costs. Run `uv run python ../evals/scripts/run_evals.py --mode=live` with `OPENAI_API_KEY` for live cloud evaluation.
 
@@ -164,7 +166,7 @@ OpsPilot includes an automated evaluation benchmark suite in `evals/` containing
 
 ## 5. Technology Stack
 
-- **Backend:** Python 3.12+, `uv`, FastAPI, Pydantic v2, SQLAlchemy 2.0 Async, SQLite / PostgreSQL, Redis.
+- **Backend:** Python 3.12+, `uv`, FastAPI, Pydantic v2, SQLAlchemy 2.0 Async, Alembic, SQLite / PostgreSQL, Redis, Boto3.
 - **Frontend:** React 19, TypeScript, Vite, Tailwind CSS, TanStack Query, Lucide Icons.
 - **GenAI & Orchestration:** LangGraph, OpenAI / Anthropic provider abstraction, MockLLMProvider, dense vector embeddings, hybrid RAG.
 - **DevOps:** Docker Compose, Multi-stage Dockerfiles, GitHub Actions CI/CD.
@@ -194,9 +196,9 @@ npm install
 cd backend
 uv run pytest -v
 ```
-*(All 43 unit, integration, RAG boundary, cross-tenant security isolation, Decimal math, rate limiting, and RBAC matrix tests pass in ~4.3s).*
+*(All 72 unit, integration, RAG boundary, cross-tenant security isolation, Decimal math, rate limiting, and RBAC matrix tests pass in ~6s).*
 
-### Step 3: Run the 50-Case Evaluation Benchmark
+### Step 3: Run the 55-Case Evaluation Benchmark
 ```bash
 cd backend
 # Deterministic regression benchmark (offline, no API key needed):
@@ -225,9 +227,9 @@ npm run dev
 
 ---
 
-## 7. Docker Compose Deployment
+## 7. Docker Compose (Local Development & Demo Stack)
 
-To run the complete production container stack (API, Frontend, PostgreSQL 16, Redis 7):
+To run the complete development and demo container stack (API, Frontend, PostgreSQL 16, Redis 7):
 
 ```bash
 docker compose up --build -d

@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_permission
 from app.core.config import get_settings
 from app.core.errors import AuthenticationError, ConflictError, ForbiddenError, NotFoundError
+from app.core.rate_limit import rate_limit
 from app.core.rbac import Permission
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.session import get_db
@@ -24,7 +25,11 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(credentials: UserLogin, db: Annotated[AsyncSession, Depends(get_db)]):
+async def login(
+    credentials: UserLogin,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _rl: bool = Depends(rate_limit(requests_per_minute=20)),
+):
     """Authenticates user with email and password, returning JWT access token."""
     stmt = select(User).where(User.email == credentials.email)
     res = await db.execute(stmt)
@@ -51,7 +56,11 @@ async def login(credentials: UserLogin, db: Annotated[AsyncSession, Depends(get_
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register(payload: UserCreate, db: Annotated[AsyncSession, Depends(get_db)]):
+async def register(
+    payload: UserCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _rl: bool = Depends(rate_limit(requests_per_minute=10)),
+):
     """
     Public self-registration. Strictly restricted to non-privileged roles (viewer, reviewer).
     Privileged roles (admin, ops_manager) cannot be self-provisioned.
@@ -66,6 +75,10 @@ async def register(payload: UserCreate, db: Annotated[AsyncSession, Depends(get_
     t_stmt = select(Tenant).where(Tenant.slug == slug)
     tenant = (await db.execute(t_stmt)).scalar_one_or_none()
     if not tenant:
+        if settings.ENVIRONMENT == "production":
+            raise ForbiddenError(
+                f"Tenant '{slug}' does not exist. Self-creation of new tenants is restricted in production."
+            )
         tenant = Tenant(name=f"{slug.capitalize()} Corp", slug=slug)
         db.add(tenant)
         await db.flush()

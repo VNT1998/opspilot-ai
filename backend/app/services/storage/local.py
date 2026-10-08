@@ -1,6 +1,7 @@
 import os
 import uuid
 from pathlib import Path
+from typing import Optional
 from app.core.config import get_settings
 from app.services.storage.base import StorageProvider
 
@@ -12,7 +13,13 @@ class LocalStorageProvider(StorageProvider):
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
-    async def save_file(self, content: bytes, filename: str, tenant_id: str) -> str:
+    async def save_file(
+        self,
+        content: bytes,
+        filename: str,
+        tenant_id: str,
+        content_type: Optional[str] = None,
+    ) -> str:
         tenant_dir = self.base_dir / tenant_id
         tenant_dir.mkdir(parents=True, exist_ok=True)
 

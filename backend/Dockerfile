@@ -10,8 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN groupadd -g 1001 appgroup && \
     useradd -u 1001 -g appgroup -m -s /bin/bash appuser
 
-# Install uv binary from official Astral image
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# Install uv binary from official Astral image (pinned version)
+COPY --from=ghcr.io/astral-sh/uv:0.5.21 /uv /uvx /bin/
 
 WORKDIR /app
 

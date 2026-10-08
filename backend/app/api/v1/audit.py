@@ -34,4 +34,4 @@ async def list_audit_logs(
 
     res = await db.execute(stmt)
     logs = res.scalars().all()
-    return [AuditLogResponse.model_validate(l) for l in logs]
+    return [AuditLogResponse.model_validate(item) for item in logs]

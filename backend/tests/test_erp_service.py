@@ -36,6 +36,7 @@ async def test_erp_service_idempotent_duplicate_call(db_session: AsyncSession):
         invoice_number="INV-IDEM-001",
         vendor_name="Acme Industrial Supplies",
         total_amount=1450.00,
+        actor_id="usr_admin_1",
     )
     # Second identical call for same document
     inv2 = await erp.post_invoice(
@@ -44,6 +45,7 @@ async def test_erp_service_idempotent_duplicate_call(db_session: AsyncSession):
         invoice_number="INV-IDEM-001",
         vendor_name="Acme Industrial Supplies",
         total_amount=1450.00,
+        actor_id="usr_admin_1",
     )
     assert inv1.id == inv2.id
 
@@ -66,6 +68,7 @@ async def test_erp_service_duplicate_invoice_number_conflict(db_session: AsyncSe
         invoice_number="INV-DUP-999",
         vendor_name="Acme Industrial Supplies",
         total_amount=1450.00,
+        actor_id="usr_admin_1",
     )
     # Attempt to post invoice with same invoice number for document B -> ConflictError
     with pytest.raises(ConflictError) as exc_info:
@@ -75,5 +78,6 @@ async def test_erp_service_duplicate_invoice_number_conflict(db_session: AsyncSe
             invoice_number="INV-DUP-999",
             vendor_name="Acme Industrial Supplies",
             total_amount=1450.00,
+            actor_id="usr_admin_1",
         )
     assert "Duplicate invoice detected" in str(exc_info.value)

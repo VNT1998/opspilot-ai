@@ -1,13 +1,16 @@
 import json
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 import numpy as np
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.config import get_settings
 from app.models.knowledge import KnowledgeChunk, KnowledgeDocument
 from app.schemas.knowledge import Citation, KnowledgeSearchResponse
 from app.services.llm.base import LLMProvider
 from app.services.rag.chunker import chunk_document_text
+
+settings = get_settings()
 
 
 def cosine_similarity(v1: List[float], v2: List[float]) -> float:
@@ -106,9 +109,9 @@ class RAGEngine:
         scored_candidates: List[Tuple[float, KnowledgeChunk, KnowledgeDocument]] = []
 
         for chunk, doc in rows:
-            # Enforce ACL: verify if user's role is in document's permitted ACL
+            # Enforce exact ACL: verify if user's role is in document's permitted ACL
             permitted_roles = json.loads(doc.acl_roles_json)
-            if user_role not in permitted_roles and "admin" not in user_role:
+            if user_role not in permitted_roles and user_role != "admin":
                 continue
 
             # 1. Dense vector similarity
@@ -124,9 +127,10 @@ class RAGEngine:
             hybrid_score = (0.7 * dense_score) + (0.3 * lex_score)
             scored_candidates.append((hybrid_score, chunk, doc))
 
-        # Sort by hybrid score descending and filter out candidates with zero or negative relevance
+        # Sort by hybrid score descending and filter by configurable minimum relevance score
         scored_candidates.sort(key=lambda x: x[0], reverse=True)
-        top_candidates = [c for c in scored_candidates if c[0] > 0.0][:limit]
+        min_score = getattr(settings, "RAG_MIN_RELEVANCE_SCORE", 0.05)
+        top_candidates = [c for c in scored_candidates if c[0] >= min_score][:limit]
 
         citations: List[Citation] = []
         context_snippets: List[str] = []

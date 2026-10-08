@@ -1,9 +1,9 @@
 from typing import Annotated, Callable
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.errors import AuthenticationError, AuthorizationError
+from app.core.errors import AuthenticationError
 from app.core.rbac import Permission, check_permission
 from app.core.security import decode_access_token
 from app.db.session import get_db
@@ -40,6 +40,7 @@ async def get_current_user(
 
 def require_permission(perm: Permission) -> Callable:
     """FastAPI dependency factory enforcing RBAC permission."""
+
     async def permission_dependency(current_user: Annotated[User, Depends(get_current_user)]) -> User:
         check_permission(current_user.role, perm)
         return current_user

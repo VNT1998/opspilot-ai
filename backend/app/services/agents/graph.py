@@ -1,21 +1,17 @@
 import json
 import time
-from typing import Any, Dict
+from typing import Dict
 from langgraph.graph import END, StateGraph
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.audit import AuditLog
 from app.models.document import Document
-from app.models.erp import Invoice, InvoiceLine, PurchaseOrder
 from app.models.extraction import DocumentExtraction
-from app.models.review import ReviewTask
 from app.models.workflow import AgentRun, ToolCall, WorkflowRun, WorkflowStep
 from app.schemas.extraction import InvoiceExtractionSchema
 from app.services.agents.state import OpsPilotState
 from app.services.llm.base import LLMProvider
 from app.services.rag.engine import RAGEngine
 from app.services.tools.definitions import (
-    CalculateVarianceInput,
     CreateReviewTaskInput,
     ToolCallContext,
 )
@@ -70,12 +66,15 @@ class AgentWorkflowService:
             out = {
                 "logs": logs,
                 "tool_calls_executed": state.get("tool_calls_executed", []),
-                "total_tokens": state.get("total_tokens", 50),
-                "total_cost": state.get("total_cost", 0.0001),
+                "total_tokens": state.get("total_tokens", 0),
+                "total_cost": state.get("total_cost", 0.0),
+                "usage_source": getattr(self.llm, "usage_source", "estimated"),
             }
             elapsed = int((time.time() - start_t) * 1000)
             if state.get("workflow_run_id"):
-                await self._record_step(state["workflow_run_id"], state["tenant_id"], "intake", "SUCCESS", state, out, elapsed)
+                await self._record_step(
+                    state["workflow_run_id"], state["tenant_id"], "intake", "SUCCESS", state, out, elapsed
+                )
             return out
 
         # 2. Classification Node
@@ -87,16 +86,27 @@ class AgentWorkflowService:
 
             logs = list(state.get("logs", []))
             logs.append(f"Classification: Classified as '{doc_type}' with confidence {conf:.2f}")
+
+            # Capture usage telemetry from live provider when available
+            tokens_used = 0
+            cost_incurred = 0.0
+            if hasattr(self.llm, "last_usage") and self.llm.last_usage:
+                tokens_used = self.llm.last_usage.get("total_tokens", 0)
+                cost_incurred = round((tokens_used / 1000.0) * 0.0015, 6)
+
             out = {
                 "classification": doc_type,
                 "classification_confidence": conf,
                 "logs": logs,
-                "total_tokens": state.get("total_tokens", 0) + 120,
-                "total_cost": state.get("total_cost", 0.0) + 0.0003,
+                "total_tokens": state.get("total_tokens", 0) + tokens_used,
+                "total_cost": round(state.get("total_cost", 0.0) + cost_incurred, 6),
+                "usage_source": getattr(self.llm, "usage_source", "estimated"),
             }
             elapsed = int((time.time() - start_t) * 1000)
             if state.get("workflow_run_id"):
-                await self._record_step(state["workflow_run_id"], state["tenant_id"], "classification", "SUCCESS", state, out, elapsed)
+                await self._record_step(
+                    state["workflow_run_id"], state["tenant_id"], "classification", "SUCCESS", state, out, elapsed
+                )
             return out
 
         # 3. Extraction Node
@@ -106,17 +116,29 @@ class AgentWorkflowService:
             extracted_obj, field_confs = await self.llm.extract_structured(text, InvoiceExtractionSchema)
 
             logs = list(state.get("logs", []))
-            logs.append(f"Extraction: Extracted invoice {extracted_obj.invoice_number} from vendor '{extracted_obj.vendor_name}'")
+            logs.append(
+                f"Extraction: Extracted invoice {extracted_obj.invoice_number} from vendor '{extracted_obj.vendor_name}'"
+            )
+
+            tokens_used = 0
+            cost_incurred = 0.0
+            if hasattr(self.llm, "last_usage") and self.llm.last_usage:
+                tokens_used = self.llm.last_usage.get("total_tokens", 0)
+                cost_incurred = round((tokens_used / 1000.0) * 0.0015, 6)
+
             out = {
                 "extracted_data": extracted_obj.model_dump(),
                 "field_confidences": field_confs,
                 "logs": logs,
-                "total_tokens": state.get("total_tokens", 0) + 380,
-                "total_cost": state.get("total_cost", 0.0) + 0.0012,
+                "total_tokens": state.get("total_tokens", 0) + tokens_used,
+                "total_cost": round(state.get("total_cost", 0.0) + cost_incurred, 6),
+                "usage_source": getattr(self.llm, "usage_source", "estimated"),
             }
             elapsed = int((time.time() - start_t) * 1000)
             if state.get("workflow_run_id"):
-                await self._record_step(state["workflow_run_id"], state["tenant_id"], "extraction", "SUCCESS", state, out, elapsed)
+                await self._record_step(
+                    state["workflow_run_id"], state["tenant_id"], "extraction", "SUCCESS", state, out, elapsed
+                )
             return out
 
         # 4. Validation Node (Deterministic)
@@ -130,18 +152,23 @@ class AgentWorkflowService:
                 tenant_id=state["tenant_id"],
                 extraction=schema_inst,
                 field_confidences=field_confs,
+                raw_text=state.get("raw_text"),
             )
 
             logs = list(state.get("logs", []))
             status_str = "CLEAN" if val_res.is_clean else "REQUIRES_REVIEW"
-            logs.append(f"Validation: Deterministic check result: {status_str} (Confidence: {val_res.confidence_score})")
+            logs.append(
+                f"Validation: Deterministic check result: {status_str} (Confidence: {val_res.confidence_score})"
+            )
             out = {
                 "validation_result": val_res.model_dump(),
                 "logs": logs,
             }
             elapsed = int((time.time() - start_t) * 1000)
             if state.get("workflow_run_id"):
-                await self._record_step(state["workflow_run_id"], state["tenant_id"], "validation", "SUCCESS", state, out, elapsed)
+                await self._record_step(
+                    state["workflow_run_id"], state["tenant_id"], "validation", "SUCCESS", state, out, elapsed
+                )
             return out
 
         # 5. RAG Policy Node
@@ -164,12 +191,15 @@ class AgentWorkflowService:
             out = {
                 "policy_citations": citations_list,
                 "logs": logs,
-                "total_tokens": state.get("total_tokens", 0) + 210,
-                "total_cost": state.get("total_cost", 0.0) + 0.0006,
+                "total_tokens": state.get("total_tokens", 0),
+                "total_cost": state.get("total_cost", 0.0),
+                "usage_source": getattr(self.llm, "usage_source", "estimated"),
             }
             elapsed = int((time.time() - start_t) * 1000)
             if state.get("workflow_run_id"):
-                await self._record_step(state["workflow_run_id"], state["tenant_id"], "rag_policy", "SUCCESS", state, out, elapsed)
+                await self._record_step(
+                    state["workflow_run_id"], state["tenant_id"], "rag_policy", "SUCCESS", state, out, elapsed
+                )
             return out
 
         # 6. Decision Node
@@ -197,7 +227,9 @@ class AgentWorkflowService:
             }
             elapsed = int((time.time() - start_t) * 1000)
             if state.get("workflow_run_id"):
-                await self._record_step(state["workflow_run_id"], state["tenant_id"], "decision", "SUCCESS", state, out, elapsed)
+                await self._record_step(
+                    state["workflow_run_id"], state["tenant_id"], "decision", "SUCCESS", state, out, elapsed
+                )
             return out
 
         # 7. Action Node
@@ -205,8 +237,10 @@ class AgentWorkflowService:
             start_t = time.time()
             ctx = ToolCallContext(
                 tenant_id=state["tenant_id"],
-                user_id=state.get("user_id", "agent_system"),
-                user_role=state.get("user_role", "admin"),
+                user_id=state.get("user_id") or "agent_system",
+                user_role=state.get("user_role") or "reviewer",
+                workflow_run_id=state.get("workflow_run_id"),
+                source="agent",
             )
             decision = state.get("decision", "SEND_TO_REVIEW")
             doc_id = state["document_id"]
@@ -215,11 +249,24 @@ class AgentWorkflowService:
             review_task_id = None
             invoice_id = None
 
+            # Deterministic policy guard: LLM proposes, policy decides
+            if decision == "APPROVE_AUTOMATICALLY":
+                val_res = state.get("validation_result", {})
+                if not val_res.get("is_clean", False) or val_res.get("requires_human_review", True):
+                    decision = "SEND_TO_REVIEW"
+                    state["decision_reason"] = (
+                        val_res.get("routing_reason") or "Deterministic policy requires human review."
+                    )
+                    logs.append(
+                        "Action Guard: Overriding APPROVE_AUTOMATICALLY to SEND_TO_REVIEW due to validation policy."
+                    )
+
             if decision == "APPROVE_AUTOMATICALLY":
                 # Create posted invoice in ERP
                 t_tool_start = time.time()
                 ext_dict = state.get("extracted_data", {})
                 from app.services.erp.service import ERPService
+
                 erp_service = ERPService(self.db)
                 inv = await erp_service.post_invoice(
                     tenant_id=state["tenant_id"],
@@ -230,7 +277,7 @@ class AgentWorkflowService:
                     total_amount=ext_dict.get("total", 0.0),
                     currency=ext_dict.get("currency", "USD"),
                     source="agent",
-                    actor_id=state.get("user_id", "system"),
+                    actor_id=state.get("user_id", "agent_system"),
                     validation_status="CLEAN",
                 )
                 t_tool_elapsed = max(int((time.time() - t_tool_start) * 1000), 1)
@@ -242,7 +289,14 @@ class AgentWorkflowService:
                 if doc:
                     doc.status = "COMPLETED"
 
-                tool_calls.append({"tool": "post_invoice_erp", "status": "SUCCESS", "invoice_id": inv.id, "duration_ms": t_tool_elapsed})
+                tool_calls.append(
+                    {
+                        "tool": "post_invoice_erp",
+                        "status": "SUCCESS",
+                        "invoice_id": inv.id,
+                        "duration_ms": t_tool_elapsed,
+                    }
+                )
                 logs.append(f"Action: Successfully posted invoice {inv.invoice_number} to ERP system")
             else:
                 # Escalate to Human Review Queue
@@ -264,7 +318,14 @@ class AgentWorkflowService:
                 if doc:
                     doc.status = "REVIEW_REQUIRED"
 
-                tool_calls.append({"tool": "create_review_task", "status": "SUCCESS", "task_id": review_task_id, "duration_ms": t_tool_elapsed})
+                tool_calls.append(
+                    {
+                        "tool": "create_review_task",
+                        "status": "SUCCESS",
+                        "task_id": review_task_id,
+                        "duration_ms": t_tool_elapsed,
+                    }
+                )
                 logs.append(f"Action: Created Human Review Task {review_task_id}")
 
             out = {
@@ -275,7 +336,9 @@ class AgentWorkflowService:
             }
             elapsed = int((time.time() - start_t) * 1000)
             if state.get("workflow_run_id"):
-                await self._record_step(state["workflow_run_id"], state["tenant_id"], "action", "SUCCESS", state, out, elapsed)
+                await self._record_step(
+                    state["workflow_run_id"], state["tenant_id"], "action", "SUCCESS", state, out, elapsed
+                )
             return out
 
         # Register nodes in LangGraph
@@ -347,7 +410,9 @@ class AgentWorkflowService:
 
         # Persist DocumentExtraction
         if doc_id and final_state.get("extracted_data"):
-            ext_stmt = select(DocumentExtraction).where(DocumentExtraction.document_id == doc_id, DocumentExtraction.tenant_id == tenant_id)
+            ext_stmt = select(DocumentExtraction).where(
+                DocumentExtraction.document_id == doc_id, DocumentExtraction.tenant_id == tenant_id
+            )
             existing_ext = (await self.db.execute(ext_stmt)).scalar_one_or_none()
             ext_dict = final_state["extracted_data"]
             confs_dict = final_state.get("field_confidences", {})

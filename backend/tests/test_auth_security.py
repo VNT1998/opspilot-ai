@@ -116,10 +116,14 @@ def test_production_secret_key_validation():
         Settings(ENVIRONMENT="production")
     assert "Production environment requires a strong" in str(exc_info.value)
 
-    # Valid secret in production should succeed
+    # Valid production settings should succeed
     valid_settings = Settings(
         ENVIRONMENT="production",
         SECRET_KEY="a-very-long-production-grade-secret-key-32chars!",
+        DEFAULT_LLM_PROVIDER="openai",
+        OPENAI_API_KEY="sk-prod-test-key-12345",
+        ENABLE_DEMO_SEED=False,
+        USE_IN_MEMORY_QUEUE=False,
+        STORAGE_TYPE="s3",
     )
     assert valid_settings.ENVIRONMENT == "production"
-

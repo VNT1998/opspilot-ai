@@ -25,11 +25,12 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    # Demo Seed Credentials (LOCAL DEVELOPMENT ONLY)
-    DEMO_ADMIN_PASSWORD: str = "admin123"
-    DEMO_OPS_PASSWORD: str = "ops123"
-    DEMO_REVIEWER_PASSWORD: str = "reviewer123"
-    DEMO_VIEWER_PASSWORD: str = "viewer123"
+    # Demo Seed Credentials & Flag (DEVELOPMENT ONLY)
+    ENABLE_DEMO_SEED: bool = True
+    DEMO_ADMIN_PASSWORD: str = ""
+    DEMO_OPS_PASSWORD: str = ""
+    DEMO_REVIEWER_PASSWORD: str = ""
+    DEMO_VIEWER_PASSWORD: str = ""
 
     # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///./opspilot.db"
@@ -38,6 +39,7 @@ class Settings(BaseSettings):
     # Redis & Asynchronous Worker
     REDIS_URL: str = "redis://localhost:6379/0"
     USE_IN_MEMORY_QUEUE: bool = True  # True allows self-contained execution without Redis server
+    WORKER_MODE: Literal["in_process", "redis"] = "in_process"
 
     # Storage
     STORAGE_TYPE: Literal["local", "s3"] = "local"
@@ -61,6 +63,7 @@ class Settings(BaseSettings):
     VARIANCE_TOLERANCE_PERCENT: float = 2.0  # 2% variance allowed
     VARIANCE_TOLERANCE_ABSOLUTE: float = 5.0  # $5.00 tolerance
     HIGH_VALUE_THRESHOLD: float = 10000.0  # Invoices >= $10k strictly require human review
+    RAG_MIN_RELEVANCE_SCORE: float = 0.01
 
     # CORS
     CORS_ORIGINS: List[str] = [
@@ -73,14 +76,48 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_production_security(self) -> "Settings":
         if self.ENVIRONMENT == "production":
+            # 1. Secret Key validation
+            known_insecure = (
+                "insecure",
+                "dev-secret",
+                "change-me",
+                "generate-a-long",
+                "admin123",
+                "opspilot-2026",
+            )
             if (
                 not self.SECRET_KEY
-                or self.SECRET_KEY == "insecure-dev-secret-key-change-in-production-opspilot-2026"
                 or len(self.SECRET_KEY) < 32
+                or any(k in self.SECRET_KEY.lower() for k in known_insecure)
             ):
                 raise ValueError(
-                    "Production environment requires a strong, explicit SECRET_KEY with at least 32 characters."
+                    "Production environment requires a strong, explicit SECRET_KEY with at least 32 characters, and cannot contain default placeholders."
                 )
+
+            # 2. No Mock LLM in production
+            if self.DEFAULT_LLM_PROVIDER == "mock":
+                raise ValueError("DEFAULT_LLM_PROVIDER cannot be 'mock' in production.")
+
+            # 3. Provider credentials check
+            if self.DEFAULT_LLM_PROVIDER == "openai" and not self.OPENAI_API_KEY:
+                raise ValueError("OPENAI_API_KEY is required in production when DEFAULT_LLM_PROVIDER=openai.")
+            if self.DEFAULT_LLM_PROVIDER == "anthropic" and not self.ANTHROPIC_API_KEY:
+                raise ValueError("ANTHROPIC_API_KEY is required in production when DEFAULT_LLM_PROVIDER=anthropic.")
+
+            # 4. No demo seed in production
+            if self.ENABLE_DEMO_SEED:
+                raise ValueError("ENABLE_DEMO_SEED must be False in production.")
+
+            # 5. Durable queue required in production
+            if self.USE_IN_MEMORY_QUEUE:
+                raise ValueError(
+                    "USE_IN_MEMORY_QUEUE cannot be True in production; a durable queue backend is required."
+                )
+
+            # 6. Object storage required in production
+            if self.STORAGE_TYPE != "s3":
+                raise ValueError("STORAGE_TYPE must be 's3' in production.")
+
         return self
 
 

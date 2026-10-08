@@ -1,5 +1,5 @@
 from typing import Any, Dict, Optional
-from fastapi import HTTPException, status
+from fastapi import status
 
 
 class OpsPilotException(Exception):
@@ -115,7 +115,12 @@ class StorageError(OpsPilotException):
 
 
 class RateLimitExceededError(OpsPilotException):
-    def __init__(self, message: str = "Rate limit exceeded. Please retry later.", retry_after_seconds: int = 60, details: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        message: str = "Rate limit exceeded. Please retry later.",
+        retry_after_seconds: int = 60,
+        details: Optional[Dict[str, Any]] = None,
+    ):
         full_details = details or {}
         full_details["retry_after_seconds"] = retry_after_seconds
         super().__init__(
@@ -125,4 +130,3 @@ class RateLimitExceededError(OpsPilotException):
             retryable=True,
             details=full_details,
         )
-

@@ -10,6 +10,7 @@ class UserLogin(BaseModel):
 
 class UserCreate(BaseModel):
     """Public registration schema strictly restricted to non-privileged roles."""
+
     email: EmailStr
     password: str
     full_name: str
@@ -19,6 +20,7 @@ class UserCreate(BaseModel):
 
 class AdminUserCreate(BaseModel):
     """Admin-only user provisioning schema supporting all tenant roles."""
+
     email: EmailStr
     password: str
     full_name: str
@@ -27,6 +29,7 @@ class AdminUserCreate(BaseModel):
 
 class DevTokenRequest(BaseModel):
     """Development-only role switching request."""
+
     role: Literal["admin", "ops_manager", "reviewer", "viewer"]
 
 

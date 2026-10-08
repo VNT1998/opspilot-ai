@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict, List, Tuple, Type, TypeVar
+from typing import Dict, List, Tuple, Type, TypeVar
 import httpx
 from pydantic import BaseModel
 from app.core.config import get_settings
@@ -36,19 +36,33 @@ class OpenAIProvider:
             if response.status_code != 200:
                 raise AIProviderError(f"OpenAI error: {response.text}", provider="openai")
             data = response.json()
+            # Capture usage telemetry if present
+            if "usage" in data:
+                u = data["usage"]
+                self.last_usage = {
+                    "provider": "openai",
+                    "model": self.model,
+                    "input_tokens": u.get("prompt_tokens", 0),
+                    "output_tokens": u.get("completion_tokens", 0),
+                    "total_tokens": u.get("total_tokens", 0),
+                    "usage_source": "provider",
+                }
             return data["choices"][0]["message"]["content"]
 
     async def classify_document(self, text: str, filename: str) -> Tuple[str, float]:
         prompt = (
             f"Classify this document based on filename: '{filename}' and content excerpt: '{text[:1000]}'. "
-            "Output valid JSON: {\"classification\": \"invoice\"|\"purchase_order\"|\"contract\"|\"receipt\"|\"other\", \"confidence\": 0.95}"
+            'Output valid JSON: {"classification": "invoice"|"purchase_order"|"contract"|"receipt"|"other", "confidence": 0.95}'
         )
         out = await self.generate(prompt)
         try:
             data = json.loads(out)
-            return (data.get("classification", "invoice"), float(data.get("confidence", 0.90)))
-        except Exception:
-            return ("invoice", 0.85)
+            cls_val = data.get("classification")
+            if not cls_val:
+                raise ValueError("Missing 'classification' key in JSON response.")
+            return (str(cls_val), float(data.get("confidence", 0.90)))
+        except Exception as e:
+            raise AIProviderError(f"Malformed classification response from OpenAI: {str(e)}", provider="openai")
 
     async def extract_structured(self, text: str, schema: Type[T]) -> Tuple[T, Dict[str, float]]:
         prompt = (
@@ -59,11 +73,11 @@ class OpenAIProvider:
         try:
             parsed_json = json.loads(out)
             obj = schema.model_validate(parsed_json)
-            # Default confidences for successful extraction
+            # Confidences based on validation success
             confidences = {k: 0.95 for k in parsed_json.keys()}
             return (obj, confidences)
         except Exception as e:
-            raise AIProviderError(f"Extraction failed: {str(e)}", provider="openai")
+            raise AIProviderError(f"Structured extraction validation failed: {str(e)}", provider="openai")
 
     async def embed(self, text: str) -> List[float]:
         if not self.api_key:

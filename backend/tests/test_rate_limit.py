@@ -1,5 +1,3 @@
-import pytest
-from app.core.errors import RateLimitExceededError
 from app.core.rate_limit import RateLimiter
 
 

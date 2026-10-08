@@ -1,7 +1,7 @@
 import time
 import uuid
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.api.v1.router import api_v1_router
@@ -174,15 +174,17 @@ Section 2: Three-Way Matching Rules
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: ensure tables exist
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # Startup: ensure tables exist (development and testing environments only)
+    if settings.ENVIRONMENT != "production":
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
-    # Seed demo data
-    try:
-        await seed_initial_demo_data()
-    except Exception as e:
-        logger.warning(f"Seed data execution note: {e}")
+    # Seed demo data strictly in development when explicitly enabled
+    if settings.ENVIRONMENT == "development" and getattr(settings, "ENABLE_DEMO_SEED", False):
+        try:
+            await seed_initial_demo_data()
+        except Exception as e:
+            logger.warning(f"Seed data execution note: {e}")
 
     # Start async worker
     worker = get_job_worker()

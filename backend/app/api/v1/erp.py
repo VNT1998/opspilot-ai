@@ -1,4 +1,3 @@
-from typing import List
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,25 +24,25 @@ async def list_purchase_orders(
     pos = (await db.execute(stmt)).scalars().all()
     return [
         {
-            "id": p.id,
-            "po_number": p.po_number,
-            "vendor_name": p.vendor_name,
-            "total_amount": p.total_amount,
-            "currency": p.currency,
-            "status": p.status,
+            "id": po.id,
+            "po_number": po.po_number,
+            "vendor_name": po.vendor_name,
+            "total_amount": po.total_amount,
+            "currency": po.currency,
+            "status": po.status,
             "lines": [
                 {
-                    "line_number": l.line_number,
-                    "description": l.description,
-                    "quantity": l.quantity,
-                    "unit_price": l.unit_price,
-                    "total_price": l.total_price,
-                    "sku": l.sku,
+                    "line_number": line.line_number,
+                    "description": line.description,
+                    "quantity": line.quantity,
+                    "unit_price": line.unit_price,
+                    "total_price": line.total_price,
+                    "sku": line.sku,
                 }
-                for l in p.lines
+                for line in po.lines
             ],
         }
-        for p in pos
+        for po in pos
     ]
 
 

@@ -1,15 +1,15 @@
 import json
-from typing import Annotated, List, Optional
-from fastapi import APIRouter, Depends, Query, status
+from decimal import Decimal
+from typing import List, Optional
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from app.api.deps import get_current_user, require_permission
+from app.api.deps import require_permission
 from app.core.errors import ForbiddenError, NotFoundError, ValidationError
 from app.core.rbac import Permission
 from app.db.session import get_db
 from app.models.document import Document
-from app.models.erp import Invoice
 from app.models.extraction import DocumentExtraction
 from app.models.review import ReviewAction, ReviewTask
 from app.models.user import User
@@ -18,6 +18,7 @@ from app.schemas.extraction import InvoiceExtractionSchema
 from app.schemas.review import ReviewActionRequest, ReviewDecisionResponse, ReviewTaskResponse
 from app.services.audit.service import AuditService
 from app.services.erp.service import ERPService
+from app.services.validation.policies import allowed_review_transition, requires_high_value_approval
 from app.services.validation.engine import ValidationEngine
 
 router = APIRouter(prefix="/reviews", tags=["Human Review"])
@@ -85,6 +86,67 @@ async def approve_review_task(
     if not task:
         raise NotFoundError("ReviewTask", task_id)
 
+    # 1. State machine transition check
+    if not allowed_review_transition(task.status, "RESOLVED"):
+        raise ValidationError(
+            f"Cannot approve task '{task_id}': transition from terminal status '{task.status}' to 'RESOLVED' is not permitted."
+        )
+
+    # 2. Load document and extraction by document_id + tenant_id
+    doc_stmt = select(Document).where(Document.id == task.document_id, Document.tenant_id == current_user.tenant_id)
+    doc = (await db.execute(doc_stmt)).scalar_one_or_none()
+    if not doc:
+        raise NotFoundError("Document", task.document_id)
+
+    ext_stmt = select(DocumentExtraction).where(
+        DocumentExtraction.document_id == task.document_id, DocumentExtraction.tenant_id == current_user.tenant_id
+    )
+    ext = (await db.execute(ext_stmt)).scalar_one_or_none()
+    data = {}
+    if ext and ext.structured_data:
+        data = json.loads(ext.structured_data) if isinstance(ext.structured_data, str) else ext.structured_data
+
+        # 3. Parse total with Decimal and check high-value threshold
+        total_val = data.get("total", 0.0)
+        try:
+            total_dec = Decimal(str(total_val))
+        except Exception:
+            total_dec = Decimal("0.00")
+
+        if requires_high_value_approval(total_dec) and current_user.role not in ("admin", "ops_manager"):
+            raise ForbiddenError(
+                f"Invoice total (${total_dec:,.2f}) meets or exceeds the $10,000 policy threshold and strictly requires Operations Manager or Admin sign-off."
+            )
+
+        # 4. Re-run deterministic validation before ERP side effect
+        try:
+            validated_invoice = InvoiceExtractionSchema.model_validate(data)
+            validator = ValidationEngine(db)
+            confidences = {}
+            if ext.field_confidences:
+                try:
+                    confidences = (
+                        json.loads(ext.field_confidences)
+                        if isinstance(ext.field_confidences, str)
+                        else ext.field_confidences
+                    )
+                except Exception:
+                    confidences = {}
+            val_res = await validator.validate_invoice(
+                tenant_id=current_user.tenant_id,
+                extraction=validated_invoice,
+                field_confidences=confidences,
+            )
+            if not val_res.is_clean and any(f.severity == "ERROR" for f in val_res.findings):
+                if current_user.role not in ("admin", "ops_manager"):
+                    raise ValidationError(
+                        f"Validation policy error prevented approval: {val_res.routing_reason}. Explicit override requires manager or admin authority."
+                    )
+        except (ForbiddenError, ValidationError):
+            raise
+        except Exception as e:
+            raise ValidationError(f"Pre-approval validation failed: {str(e)}")
+
     task.status = "RESOLVED"
     task.assigned_to_user_id = current_user.id
     task.resolution_notes = body.comments or "Approved by human reviewer."
@@ -100,16 +162,10 @@ async def approve_review_task(
     db.add(act)
 
     # Update Document status
-    doc_stmt = select(Document).where(Document.id == task.document_id, Document.tenant_id == current_user.tenant_id)
-    doc = (await db.execute(doc_stmt)).scalar_one_or_none()
-    if doc:
-        doc.status = "APPROVED"
+    doc.status = "APPROVED"
 
     # Post or update Invoice in ERP via centralized ERPService
-    ext_stmt = select(DocumentExtraction).where(DocumentExtraction.document_id == task.document_id, DocumentExtraction.tenant_id == current_user.tenant_id)
-    ext = (await db.execute(ext_stmt)).scalar_one_or_none()
-    if ext:
-        data = json.loads(ext.structured_data)
+    if ext and data:
         erp_service = ERPService(db)
         await erp_service.post_invoice(
             tenant_id=current_user.tenant_id,
@@ -127,7 +183,9 @@ async def approve_review_task(
 
     # Resume workflow run if present
     if task.workflow_run_id:
-        wf_stmt = select(WorkflowRun).where(WorkflowRun.id == task.workflow_run_id, WorkflowRun.tenant_id == current_user.tenant_id)
+        wf_stmt = select(WorkflowRun).where(
+            WorkflowRun.id == task.workflow_run_id, WorkflowRun.tenant_id == current_user.tenant_id
+        )
         wf = (await db.execute(wf_stmt)).scalar_one_or_none()
         if wf:
             wf.status = "COMPLETED"
@@ -167,6 +225,11 @@ async def reject_review_task(
     if not task:
         raise NotFoundError("ReviewTask", task_id)
 
+    if not allowed_review_transition(task.status, "REJECTED"):
+        raise ValidationError(
+            f"Cannot reject task '{task_id}': transition from terminal status '{task.status}' to 'REJECTED' is not permitted."
+        )
+
     task.status = "REJECTED"
     task.assigned_to_user_id = current_user.id
     task.resolution_notes = body.comments or "Rejected by human reviewer."
@@ -186,7 +249,9 @@ async def reject_review_task(
         doc.status = "REJECTED"
 
     if task.workflow_run_id:
-        wf_stmt = select(WorkflowRun).where(WorkflowRun.id == task.workflow_run_id, WorkflowRun.tenant_id == current_user.tenant_id)
+        wf_stmt = select(WorkflowRun).where(
+            WorkflowRun.id == task.workflow_run_id, WorkflowRun.tenant_id == current_user.tenant_id
+        )
         wf = (await db.execute(wf_stmt)).scalar_one_or_none()
         if wf:
             wf.status = "FAILED"
@@ -228,10 +293,17 @@ async def edit_and_approve_review_task(
     if not task:
         raise NotFoundError("ReviewTask", task_id)
 
+    if not allowed_review_transition(task.status, "RESOLVED"):
+        raise ValidationError(
+            f"Cannot edit and approve task '{task_id}': transition from terminal status '{task.status}' to 'RESOLVED' is not permitted."
+        )
+
     edited = body.edited_fields or {}
 
     # Update DocumentExtraction structured data
-    ext_stmt = select(DocumentExtraction).where(DocumentExtraction.document_id == task.document_id, DocumentExtraction.tenant_id == current_user.tenant_id)
+    ext_stmt = select(DocumentExtraction).where(
+        DocumentExtraction.document_id == task.document_id, DocumentExtraction.tenant_id == current_user.tenant_id
+    )
     ext = (await db.execute(ext_stmt)).scalar_one_or_none()
     if not ext:
         raise NotFoundError("DocumentExtraction", task.document_id)
@@ -250,7 +322,9 @@ async def edit_and_approve_review_task(
     confidences = {}
     if ext.field_confidences:
         try:
-            confidences = json.loads(ext.field_confidences) if isinstance(ext.field_confidences, str) else ext.field_confidences
+            confidences = (
+                json.loads(ext.field_confidences) if isinstance(ext.field_confidences, str) else ext.field_confidences
+            )
         except Exception:
             confidences = {}
     val_res = await validator.validate_invoice(
@@ -259,10 +333,11 @@ async def edit_and_approve_review_task(
         field_confidences=confidences,
     )
 
-    # 3. Check role authorization on high-value threshold
-    if validated_invoice.total >= 10000.0 and current_user.role not in ("admin", "ops_manager"):
+    # 3. Check role authorization on high-value threshold using Decimal
+    total_dec = Decimal(str(validated_invoice.total))
+    if requires_high_value_approval(total_dec) and current_user.role not in ("admin", "ops_manager"):
         raise ForbiddenError(
-            f"Edited invoice total (${validated_invoice.total:,.2f}) exceeds the $10,000 policy threshold and strictly requires Operations Manager or Admin sign-off."
+            f"Edited invoice total (${total_dec:,.2f}) meets or exceeds the $10,000 policy threshold and strictly requires Operations Manager or Admin sign-off."
         )
 
     # 4. Update DocumentExtraction with revalidated state and findings
@@ -308,7 +383,9 @@ async def edit_and_approve_review_task(
 
     # Resume workflow run if present
     if task.workflow_run_id:
-        wf_stmt = select(WorkflowRun).where(WorkflowRun.id == task.workflow_run_id, WorkflowRun.tenant_id == current_user.tenant_id)
+        wf_stmt = select(WorkflowRun).where(
+            WorkflowRun.id == task.workflow_run_id, WorkflowRun.tenant_id == current_user.tenant_id
+        )
         wf = (await db.execute(wf_stmt)).scalar_one_or_none()
         if wf:
             wf.status = "COMPLETED"

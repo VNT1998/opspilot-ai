@@ -21,18 +21,20 @@ class ImageOCRParser:
         warnings: List[str] = []
 
         extracted_text = ""
-        confidence = 0.50
+        confidence = 0.0
 
         # Attempt optical character recognition if pytesseract is available
         try:
             import pytesseract
+
             extracted_text = pytesseract.image_to_string(img).strip()
-            confidence = 0.90 if extracted_text else 0.40
+            confidence = 0.85 if extracted_text else 0.0
         except (ImportError, Exception) as ocr_err:
             warnings.append(
                 f"OCR engine pytesseract unavailable or failed ({str(ocr_err)}). "
                 f"Image dimensions {width}x{height} verified; routing to human review."
             )
+            confidence = 0.0
 
         pages = [
             ParsedPage(
