@@ -172,7 +172,7 @@ npm install
 cd backend
 uv run pytest -v
 ```
-*(All 16 unit, integration, cross-tenant security isolation, and E2E lifecycle tests pass in ~1.5s).*
+*(All 20 unit, integration, RAG boundary, cross-tenant security isolation, and E2E lifecycle tests pass in ~2.0s).*
 
 ### Step 3: Run the 50-Case Evaluation Benchmark
 ```bash

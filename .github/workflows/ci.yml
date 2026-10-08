@@ -27,7 +27,7 @@ jobs:
           cd backend
           uv sync --frozen --all-groups
 
-      - name: Run Backend Pytest Suite (16 Unit, Integration & Security Tests)
+      - name: Run Backend Pytest Suite (20 Unit, Integration & Security Tests)
         run: |
           cd backend
           uv run pytest -v

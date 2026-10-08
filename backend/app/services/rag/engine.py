@@ -124,9 +124,9 @@ class RAGEngine:
             hybrid_score = (0.7 * dense_score) + (0.3 * lex_score)
             scored_candidates.append((hybrid_score, chunk, doc))
 
-        # Sort by hybrid score descending
+        # Sort by hybrid score descending and filter out candidates with zero or negative relevance
         scored_candidates.sort(key=lambda x: x[0], reverse=True)
-        top_candidates = scored_candidates[:limit]
+        top_candidates = [c for c in scored_candidates if c[0] > 0.0][:limit]
 
         citations: List[Citation] = []
         context_snippets: List[str] = []
