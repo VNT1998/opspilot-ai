@@ -137,6 +137,7 @@ class RAGEngine:
             citations.append(
                 Citation(
                     document_id=doc.id,
+                    chunk_id=chunk.id,
                     title=doc.title,
                     page_number=chunk.page_number,
                     snippet=snippet,

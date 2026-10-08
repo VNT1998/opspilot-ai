@@ -25,17 +25,17 @@ jobs:
       - name: Install backend dependencies
         run: |
           cd backend
-          uv sync --all-groups
+          uv sync --frozen --all-groups
 
-      - name: Run Backend Pytest Suite
+      - name: Run Backend Pytest Suite (16 Unit, Integration & Security Tests)
         run: |
           cd backend
           uv run pytest -v
 
-      - name: Run 50-Case AI Evaluation Benchmark Suite
+      - name: Run 50-Case AI Evaluation Benchmark Suite (Deterministic Regression)
         run: |
           cd backend
-          uv run python ../evals/scripts/run_evals.py
+          uv run python ../evals/scripts/run_evals.py --mode=regression
 
   frontend-build:
     name: Frontend Vite & TypeScript Build

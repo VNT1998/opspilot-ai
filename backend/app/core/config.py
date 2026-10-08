@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # Demo Seed Credentials (LOCAL DEVELOPMENT ONLY)
+    DEMO_ADMIN_PASSWORD: str = "admin123"
+    DEMO_OPS_PASSWORD: str = "ops123"
+    DEMO_REVIEWER_PASSWORD: str = "reviewer123"
+    DEMO_VIEWER_PASSWORD: str = "viewer123"
+
     # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///./opspilot.db"
     DB_ECHO: bool = False

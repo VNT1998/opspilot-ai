@@ -4,16 +4,17 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: opspilot-postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
-      POSTGRES_DB: opspilot
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgrespassword}
+      POSTGRES_DB: ${POSTGRES_DB:-opspilot}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -21,8 +22,9 @@ services:
   redis:
     image: redis:7-alpine
     container_name: opspilot-redis
+    restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redisdata:/data
     healthcheck:
@@ -36,13 +38,21 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: opspilot-api
+    restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgrespassword@postgres:5432/opspilot
-      - REDIS_URL=redis://redis:6379/0
-      - STORAGE_TYPE=local
-      - DEFAULT_LLM_PROVIDER=mock
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgrespassword}@postgres:5432/${POSTGRES_DB:-opspilot}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - STORAGE_TYPE=${STORAGE_TYPE:-local}
+      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-mock}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-insecure-secret-key-change-in-production-2026}
+      - DEMO_ADMIN_PASSWORD=${DEMO_ADMIN_PASSWORD:-admin123}
+      - DEMO_OPS_PASSWORD=${DEMO_OPS_PASSWORD:-ops123}
+      - DEMO_REVIEWER_PASSWORD=${DEMO_REVIEWER_PASSWORD:-reviewer123}
+      - DEMO_VIEWER_PASSWORD=${DEMO_VIEWER_PASSWORD:-viewer123}
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,16 +60,24 @@ services:
         condition: service_healthy
     volumes:
       - ./backend/data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: opspilot-frontend
+    restart: unless-stopped
     ports:
-      - "5173:80"
+      - "${FRONTEND_PORT:-5173}:80"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
 volumes:
   pgdata:

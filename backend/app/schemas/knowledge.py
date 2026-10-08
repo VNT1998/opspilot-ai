@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 class Citation(BaseModel):
     document_id: str
+    chunk_id: Optional[str] = None
     title: str
     page_number: int
     snippet: str
