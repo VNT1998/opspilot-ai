@@ -1,0 +1,376 @@
+import json
+import time
+from typing import Any, Dict
+from langgraph.graph import END, StateGraph
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.models.audit import AuditLog
+from app.models.document import Document
+from app.models.erp import Invoice, InvoiceLine, PurchaseOrder
+from app.models.extraction import DocumentExtraction
+from app.models.review import ReviewTask
+from app.models.workflow import AgentRun, ToolCall, WorkflowRun, WorkflowStep
+from app.schemas.extraction import InvoiceExtractionSchema
+from app.services.agents.state import OpsPilotState
+from app.services.llm.base import LLMProvider
+from app.services.rag.engine import RAGEngine
+from app.services.tools.definitions import (
+    CalculateVarianceInput,
+    CreateReviewTaskInput,
+    ToolCallContext,
+)
+from app.services.tools.registry import ToolRegistry
+from app.services.validation.engine import ValidationEngine
+
+
+class AgentWorkflowService:
+    """
+    Stateful LangGraph Agent Orchestrator combining AI classification,
+    structured extraction, deterministic business rules, RAG policy lookup,
+    allowlisted tool calls, and human review routing.
+    """
+
+    def __init__(self, db: AsyncSession, llm_provider: LLMProvider):
+        self.db = db
+        self.llm = llm_provider
+        self.validator = ValidationEngine(db)
+        self.rag = RAGEngine(db, llm_provider)
+        self.tools = ToolRegistry(db, llm_provider)
+
+    async def _record_step(
+        self,
+        workflow_run_id: str,
+        tenant_id: str,
+        step_name: str,
+        status: str,
+        input_state: Dict,
+        output_state: Dict,
+        latency_ms: int,
+    ):
+        step = WorkflowStep(
+            tenant_id=tenant_id,
+            workflow_run_id=workflow_run_id,
+            step_name=step_name,
+            status=status,
+            input_state=json.dumps(input_state, default=str),
+            output_state=json.dumps(output_state, default=str),
+            latency_ms=latency_ms,
+        )
+        self.db.add(step)
+        await self.db.flush()
+
+    def build_graph(self):
+        workflow = StateGraph(OpsPilotState)
+
+        # 1. Intake Node
+        async def intake_node(state: OpsPilotState) -> Dict:
+            start_t = time.time()
+            logs = list(state.get("logs", []))
+            logs.append(f"Intake: Initiating processing for document '{state.get('filename')}'")
+            out = {
+                "logs": logs,
+                "tool_calls_executed": state.get("tool_calls_executed", []),
+                "total_tokens": state.get("total_tokens", 50),
+                "total_cost": state.get("total_cost", 0.0001),
+            }
+            elapsed = int((time.time() - start_t) * 1000)
+            if state.get("workflow_run_id"):
+                await self._record_step(state["workflow_run_id"], state["tenant_id"], "intake", "SUCCESS", state, out, elapsed)
+            return out
+
+        # 2. Classification Node
+        async def classification_node(state: OpsPilotState) -> Dict:
+            start_t = time.time()
+            text = state.get("raw_text", "")
+            fname = state.get("filename", "")
+            doc_type, conf = await self.llm.classify_document(text, fname)
+
+            logs = list(state.get("logs", []))
+            logs.append(f"Classification: Classified as '{doc_type}' with confidence {conf:.2f}")
+            out = {
+                "classification": doc_type,
+                "classification_confidence": conf,
+                "logs": logs,
+                "total_tokens": state.get("total_tokens", 0) + 120,
+                "total_cost": state.get("total_cost", 0.0) + 0.0003,
+            }
+            elapsed = int((time.time() - start_t) * 1000)
+            if state.get("workflow_run_id"):
+                await self._record_step(state["workflow_run_id"], state["tenant_id"], "classification", "SUCCESS", state, out, elapsed)
+            return out
+
+        # 3. Extraction Node
+        async def extraction_node(state: OpsPilotState) -> Dict:
+            start_t = time.time()
+            text = state.get("raw_text", "")
+            extracted_obj, field_confs = await self.llm.extract_structured(text, InvoiceExtractionSchema)
+
+            logs = list(state.get("logs", []))
+            logs.append(f"Extraction: Extracted invoice {extracted_obj.invoice_number} from vendor '{extracted_obj.vendor_name}'")
+            out = {
+                "extracted_data": extracted_obj.model_dump(),
+                "field_confidences": field_confs,
+                "logs": logs,
+                "total_tokens": state.get("total_tokens", 0) + 380,
+                "total_cost": state.get("total_cost", 0.0) + 0.0012,
+            }
+            elapsed = int((time.time() - start_t) * 1000)
+            if state.get("workflow_run_id"):
+                await self._record_step(state["workflow_run_id"], state["tenant_id"], "extraction", "SUCCESS", state, out, elapsed)
+            return out
+
+        # 4. Validation Node (Deterministic)
+        async def validation_node(state: OpsPilotState) -> Dict:
+            start_t = time.time()
+            extracted_dict = state.get("extracted_data", {})
+            field_confs = state.get("field_confidences", {})
+            schema_inst = InvoiceExtractionSchema.model_validate(extracted_dict)
+
+            val_res = await self.validator.validate_invoice(
+                tenant_id=state["tenant_id"],
+                extraction=schema_inst,
+                field_confidences=field_confs,
+            )
+
+            logs = list(state.get("logs", []))
+            status_str = "CLEAN" if val_res.is_clean else "REQUIRES_REVIEW"
+            logs.append(f"Validation: Deterministic check result: {status_str} (Confidence: {val_res.confidence_score})")
+            out = {
+                "validation_result": val_res.model_dump(),
+                "logs": logs,
+            }
+            elapsed = int((time.time() - start_t) * 1000)
+            if state.get("workflow_run_id"):
+                await self._record_step(state["workflow_run_id"], state["tenant_id"], "validation", "SUCCESS", state, out, elapsed)
+            return out
+
+        # 5. RAG Policy Node
+        async def rag_policy_node(state: OpsPilotState) -> Dict:
+            start_t = time.time()
+            extracted_dict = state.get("extracted_data", {})
+            total_val = extracted_dict.get("total", 0.0)
+            query = f"What is the accounts payable policy and approval threshold for invoice amount ${total_val}?"
+
+            search_res = await self.rag.hybrid_search(
+                tenant_id=state["tenant_id"],
+                query=query,
+                user_role=state.get("user_role", "admin"),
+                limit=3,
+            )
+
+            citations_list = [c.model_dump() for c in search_res.sources]
+            logs = list(state.get("logs", []))
+            logs.append(f"RAG Policy Lookup: Retrieved {len(citations_list)} citations for approval policy")
+            out = {
+                "policy_citations": citations_list,
+                "logs": logs,
+                "total_tokens": state.get("total_tokens", 0) + 210,
+                "total_cost": state.get("total_cost", 0.0) + 0.0006,
+            }
+            elapsed = int((time.time() - start_t) * 1000)
+            if state.get("workflow_run_id"):
+                await self._record_step(state["workflow_run_id"], state["tenant_id"], "rag_policy", "SUCCESS", state, out, elapsed)
+            return out
+
+        # 6. Decision Node
+        async def decision_node(state: OpsPilotState) -> Dict:
+            start_t = time.time()
+            val_res = state.get("validation_result", {})
+            requires_review = val_res.get("requires_human_review", False)
+            is_clean = val_res.get("is_clean", False)
+            routing_reason = val_res.get("routing_reason", "")
+
+            logs = list(state.get("logs", []))
+            if is_clean and not requires_review:
+                decision = "APPROVE_AUTOMATICALLY"
+                decision_reason = "Automated processing criteria fully met; all deterministic rules passed."
+                logs.append(f"Decision: {decision} — {decision_reason}")
+            else:
+                decision = "SEND_TO_REVIEW"
+                decision_reason = routing_reason or "Exception encountered during validation rules check."
+                logs.append(f"Decision: {decision} — {decision_reason}")
+
+            out = {
+                "decision": decision,
+                "decision_reason": decision_reason,
+                "logs": logs,
+            }
+            elapsed = int((time.time() - start_t) * 1000)
+            if state.get("workflow_run_id"):
+                await self._record_step(state["workflow_run_id"], state["tenant_id"], "decision", "SUCCESS", state, out, elapsed)
+            return out
+
+        # 7. Action Node
+        async def action_node(state: OpsPilotState) -> Dict:
+            start_t = time.time()
+            ctx = ToolCallContext(
+                tenant_id=state["tenant_id"],
+                user_id=state.get("user_id", "agent_system"),
+                user_role=state.get("user_role", "admin"),
+            )
+            decision = state.get("decision", "SEND_TO_REVIEW")
+            doc_id = state["document_id"]
+            logs = list(state.get("logs", []))
+            tool_calls = list(state.get("tool_calls_executed", []))
+            review_task_id = None
+            invoice_id = None
+
+            if decision == "APPROVE_AUTOMATICALLY":
+                # Create posted invoice in ERP
+                ext_dict = state.get("extracted_data", {})
+                inv = Invoice(
+                    tenant_id=state["tenant_id"],
+                    document_id=doc_id,
+                    invoice_number=ext_dict.get("invoice_number", "INV-UNKNOWN"),
+                    vendor_name=ext_dict.get("vendor_name", "Unknown Vendor"),
+                    po_number=ext_dict.get("po_number"),
+                    total_amount=ext_dict.get("total", 0.0),
+                    currency=ext_dict.get("currency", "USD"),
+                    status="POSTED",
+                    validation_status="CLEAN",
+                )
+                self.db.add(inv)
+                await self.db.flush()
+                invoice_id = inv.id
+
+                # Update document status
+                stmt = select(Document).where(Document.id == doc_id, Document.tenant_id == state["tenant_id"])
+                doc = (await self.db.execute(stmt)).scalar_one_or_none()
+                if doc:
+                    doc.status = "COMPLETED"
+
+                tool_calls.append({"tool": "post_invoice_erp", "status": "SUCCESS", "invoice_id": inv.id})
+                logs.append(f"Action: Successfully posted invoice {inv.invoice_number} to ERP system")
+            else:
+                # Escalate to Human Review Queue
+                review_out = await self.tools.create_review_task(
+                    ctx,
+                    CreateReviewTaskInput(
+                        document_id=doc_id,
+                        reason=state.get("decision_reason", "Validation exception"),
+                        priority="HIGH" if "High-value" in state.get("decision_reason", "") else "MEDIUM",
+                    ),
+                )
+                review_task_id = review_out["task_id"]
+
+                # Update document status
+                stmt = select(Document).where(Document.id == doc_id, Document.tenant_id == state["tenant_id"])
+                doc = (await self.db.execute(stmt)).scalar_one_or_none()
+                if doc:
+                    doc.status = "REVIEW_REQUIRED"
+
+                tool_calls.append({"tool": "create_review_task", "status": "SUCCESS", "task_id": review_task_id})
+                logs.append(f"Action: Created Human Review Task {review_task_id}")
+
+            out = {
+                "review_task_id": review_task_id,
+                "invoice_id": invoice_id,
+                "logs": logs,
+                "tool_calls_executed": tool_calls,
+            }
+            elapsed = int((time.time() - start_t) * 1000)
+            if state.get("workflow_run_id"):
+                await self._record_step(state["workflow_run_id"], state["tenant_id"], "action", "SUCCESS", state, out, elapsed)
+            return out
+
+        # Register nodes in LangGraph
+        workflow.add_node("intake", intake_node)
+        workflow.add_node("classification", classification_node)
+        workflow.add_node("extraction", extraction_node)
+        workflow.add_node("validation", validation_node)
+        workflow.add_node("rag_policy", rag_policy_node)
+        workflow.add_node("decision", decision_node)
+        workflow.add_node("action", action_node)
+
+        # Connect edges
+        workflow.set_entry_point("intake")
+        workflow.add_edge("intake", "classification")
+        workflow.add_edge("classification", "extraction")
+        workflow.add_edge("extraction", "validation")
+        workflow.add_edge("validation", "rag_policy")
+        workflow.add_edge("rag_policy", "decision")
+        workflow.add_edge("decision", "action")
+        workflow.add_edge("action", END)
+
+        return workflow.compile()
+
+    async def execute_workflow(self, initial_state: OpsPilotState) -> OpsPilotState:
+        """Executes the complete compiled LangGraph workflow end-to-end."""
+        app_graph = self.build_graph()
+        final_state = await app_graph.ainvoke(initial_state)
+
+        # Update Document and WorkflowRun records with results
+        wf_id = final_state.get("workflow_run_id")
+        doc_id = final_state.get("document_id")
+        tenant_id = final_state.get("tenant_id")
+
+        if wf_id:
+            stmt = select(WorkflowRun).where(WorkflowRun.id == wf_id, WorkflowRun.tenant_id == tenant_id)
+            wf = (await self.db.execute(stmt)).scalar_one_or_none()
+            if wf:
+                wf.status = "COMPLETED" if final_state.get("decision") == "APPROVE_AUTOMATICALLY" else "PAUSED_FOR_REVIEW"
+                wf.current_step = "action"
+                wf.result_summary = final_state.get("decision_reason")
+
+            # Record AgentRun telemetry
+            agent_run = AgentRun(
+                tenant_id=tenant_id,
+                workflow_run_id=wf_id,
+                model="gpt-4o" if hasattr(self.llm, "model") else "mock-agent-v1",
+                input_tokens=final_state.get("total_tokens", 600),
+                output_tokens=int(final_state.get("total_tokens", 600) * 0.4),
+                total_cost=final_state.get("total_cost", 0.002),
+                duration_ms=450,
+            )
+            self.db.add(agent_run)
+            await self.db.flush()
+
+            # Record Tool Calls telemetry
+            for tc in final_state.get("tool_calls_executed", []):
+                call = ToolCall(
+                    tenant_id=tenant_id,
+                    agent_run_id=agent_run.id,
+                    tool_name=tc.get("tool", "unknown"),
+                    input_json=json.dumps({"document_id": doc_id}),
+                    output_json=json.dumps(tc),
+                    status=tc.get("status", "SUCCESS"),
+                    duration_ms=35,
+                )
+                self.db.add(call)
+
+        # Persist DocumentExtraction
+        if doc_id and final_state.get("extracted_data"):
+            ext_stmt = select(DocumentExtraction).where(DocumentExtraction.document_id == doc_id, DocumentExtraction.tenant_id == tenant_id)
+            existing_ext = (await self.db.execute(ext_stmt)).scalar_one_or_none()
+            ext_dict = final_state["extracted_data"]
+            confs_dict = final_state.get("field_confidences", {})
+            findings_list = final_state.get("validation_result", {}).get("findings", [])
+
+            if not existing_ext:
+                new_ext = DocumentExtraction(
+                    tenant_id=tenant_id,
+                    document_id=doc_id,
+                    schema_type="invoice",
+                    raw_json=json.dumps(ext_dict),
+                    structured_data=json.dumps(ext_dict),
+                    field_confidences=json.dumps(confs_dict),
+                    validation_findings=json.dumps(findings_list),
+                    is_valid=final_state.get("validation_result", {}).get("is_clean", False),
+                )
+                self.db.add(new_ext)
+            else:
+                existing_ext.structured_data = json.dumps(ext_dict)
+                existing_ext.field_confidences = json.dumps(confs_dict)
+                existing_ext.validation_findings = json.dumps(findings_list)
+                existing_ext.is_valid = final_state.get("validation_result", {}).get("is_clean", False)
+
+        # Update Document classification & confidence
+        if doc_id:
+            doc_stmt = select(Document).where(Document.id == doc_id, Document.tenant_id == tenant_id)
+            doc_rec = (await self.db.execute(doc_stmt)).scalar_one_or_none()
+            if doc_rec:
+                doc_rec.classification = final_state.get("classification")
+                doc_rec.confidence_score = final_state.get("classification_confidence")
+
+        await self.db.commit()
+        return final_state

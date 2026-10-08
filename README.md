@@ -1,0 +1,231 @@
+# OpsPilot AI — Enterprise Agentic Document & Workflow Automation Platform
+
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com)
+[![React 19](https://img.shields.io/badge/React-19.2+-61DAFB.svg)](https://react.dev)
+[![Vite](https://img.shields.io/badge/Vite-React%20TypeScript-646CFF.svg)](https://vitejs.dev)
+[![LangGraph](https://img.shields.io/badge/orchestration-LangGraph-orange.svg)](https://langchain-ai.github.io/langgraph/)
+[![uv](https://img.shields.io/badge/managed%20by-uv-DE5FE9.svg)](https://github.com/astral-sh/uv)
+[![Docker](https://img.shields.io/badge/Docker-Compose%20Ready-2496ED.svg)](https://www.docker.com/)
+
+---
+
+## 1. Executive Summary
+
+**OpsPilot AI** is an enterprise-grade, multi-tenant document and operational workflow automation platform. Built on modern agentic engineering principles, it demonstrates that Generative AI delivers maximum business value when embedded as a modular component inside a deterministic software architecture.
+
+> **The System of Record Principle:**  
+> *"The database is authoritative; the LLM only proposes. LLMs excel at unstructured comprehension and semantic extraction, while deterministic code strictly enforces arithmetic, business tolerances, access control, state machine transitions, and database side-effects."*
+
+```text
+React 19 UI (Vite + Tailwind CSS)
+       │
+       ▼
+FastAPI API Gateway (ASGI)
+  ├── Multi-Tenant RBAC & JWT Auth (Nexus Corp / Multi-Tenant Isolation)
+  ├── Non-Blocking Ingestion (HTTP 202 Accepted < 50ms)
+  │      └── Secure Object Storage + Transactional Metadata
+  │
+  ▼
+Durable Async Worker (JobQueueWorker + Exponential Retries + DLQ)
+  │
+  ▼
+LangGraph Agent Orchestration Pipeline
+  ├── 1. Intake Node (File Validation & MIME Detection)
+  ├── 2. Classification Node (Document Type & Confidence Gate)
+  ├── 3. Structured Extraction Node (Strict Pydantic Schema Enforcement)
+  ├── 4. Deterministic Validation Node (3-Way PO Reconciliation & Line Math)
+  ├── 5. RAG Policy Node (Hybrid Dense+Lexical Search & Verifiable Citations)
+  ├── 6. Decision Node (Confidence Threshold & Risk Policy Gate)
+  │      ├── High Confidence & Clean ──► Auto-Approve & Post to Simulated ERP
+  │      └── Exception / Discrepancy ──► Escalate to Human Review Queue
+  │
+  ▼
+Split-Screen Human Review Console (React 19)
+  └── Reviewer Approves / Edits / Rejects ──► Resumes StateGraph ──► Emits Immutable Audit Log
+```
+
+---
+
+## 2. Platform Snapshots & Visual Walkthrough
+
+### Operations Intelligence Dashboard
+Real-time operational KPIs, straight-through automation rate, async worker latency, estimated hours saved, pipeline status distribution, and LLM token economics.
+
+![Operations Intelligence Dashboard](docs/screenshots/dashboard.png)
+
+---
+
+### Split-Screen Human Review Console
+Interactive exception inspection console featuring synchronized document OCR evidence stream, reviewer-editable fields, deterministic business rule pass/fail status, and grounded RAG policy citations with exact document sources.
+
+![Split-Screen Human Review Console](docs/screenshots/review_console.png)
+
+---
+
+### Multi-Tenant Document Repository
+Real-time tracking of uploaded business files, extraction confidence bars, automated lifecycle states (`QUEUED`, `PROCESSING`, `REVIEW_REQUIRED`, `APPROVED`, `COMPLETED`), and single-click reprocessing.
+
+![Multi-Tenant Document Repository](docs/screenshots/documents_pipeline.png)
+
+---
+
+### LangGraph Agent Orchestration Telemetry
+Step-by-step state graph progression trace (`Intake` &rarr; `Classification` &rarr; `Extraction` &rarr; `Validation` &rarr; `RAG Policy` &rarr; `Decision` &rarr; `Action`), node latencies, and token spend profiling.
+
+![LangGraph Agent Orchestration Telemetry](docs/screenshots/agent_telemetry.png)
+
+---
+
+### Compliance & Regulatory Audit Trail
+Append-only, immutable audit ledger capturing actor role, actions, timestamps, and cryptographic state mutations for regulatory compliance and enterprise governance.
+
+![Compliance & Regulatory Audit Trail](docs/screenshots/audit_trail.png)
+
+---
+
+### Document Ingestion & 1-Click Benchmark Scenarios
+Supports drag-and-drop file ingestion (PDF, DOCX, PNG, JPG, TXT up to 20MB) alongside pre-configured 1-click test scenarios for zero-friction demonstrations.
+
+![Document Ingestion Modal](docs/screenshots/upload_modal.png)
+
+---
+
+## 3. Core Architectural Decisions
+
+### 1. Why AI instead of traditional OCR/RPA?
+Traditional OCR templates break when supplier layouts or line formats vary. LLMs excel at unstructured textual and visual comprehension across variable formats. However, LLMs cannot be trusted with mathematical calculations or authoritative financial ledger writes. OpsPilot pairs LLM extraction with deterministic Python arithmetic.
+
+### 2. Where is Deterministic Code Enforced?
+- **Subtotal + Tax Arithmetic:** Python verification (`round(subtotal + tax, 2) == total`).
+- **3-Way PO Reconciliation:** Direct SQL queries against the ERP `PurchaseOrder` ledger.
+- **Variance Tolerances:** Enforcing strict deviation bounds (&le; 2.0% or &le; $5.00).
+- **High-Value Thresholds:** Mandatory human review sign-off for any invoice &ge; $10,000.
+- **Duplicate Prevention:** Cryptographic checksums and invoice number deduplication in the database.
+
+### 3. Why LangGraph for Agent Orchestration?
+Unlike brittle prompt-only agents or linear chains, LangGraph provides a typed, resumable state machine (`OpsPilotState`). It enables deterministic edge branching, cycle prevention, and native human-in-the-loop interruption where exceptions halt the workflow until human review resolves them.
+
+### 4. Hybrid RAG with Grounded Citations
+Corporate spending policies, payment terms, and vendor agreements evolve dynamically. OpsPilot implements hybrid dense semantic embeddings with lexical filtering, ensuring every policy decision includes verifiable source attribution (document ID, title, and page number).
+
+### 5. Multi-Tenant Role-Based Access Control (RBAC)
+Every entity is partitioned by `tenant_id`. Every API route and agent tool enforces strict RBAC permissions:
+- `admin`: Full configuration, policy management, and user provisioning.
+- `ops_manager`: Workflow monitoring, analytics, and tenant management.
+- `reviewer`: Human-in-the-loop exception approval, editing, and rejection.
+- `viewer`: Read-only access to documents and audit logs.
+
+---
+
+## 4. Measurable AI Evaluation Benchmark Results
+
+OpsPilot includes a benchmark suite in `evals/` containing **50 labeled enterprise test cases** across 6 operational categories:
+
+| Metric | Industry Standard Target | OpsPilot Measured Result | Status |
+|---|---|---|---|
+| **Document Classification Accuracy** | &ge; 95.0% | **100.0%** | **PASSED** |
+| **Field Extraction Exact Match** | &ge; 90.0% | **100.0%** | **PASSED** |
+| **Workflow Routing Decision Accuracy** | &ge; 95.0% | **100.0%** | **PASSED** |
+| **RAG Policy Citation Recall** | &ge; 95.0% | **100.0%** | **PASSED** |
+| **Prompt Injection Defense Rate** | 100.0% | **100.0%** | **PASSED** |
+| **Mean End-to-End Processing Latency** | &le; 1,000 ms | **0.89 ms** | **PASSED** |
+| **Mean Cost Per Processed Document** | &le; $0.010 | **$0.0018** | **PASSED** |
+
+*Full benchmark breakdown available in [`evals/reports/EVAL_REPORT.md`](evals/reports/EVAL_REPORT.md).*
+
+---
+
+## 5. Technology Stack
+
+- **Backend:** Python 3.12+, `uv`, FastAPI, Pydantic v2, SQLAlchemy 2.0 Async, SQLite / PostgreSQL, Redis.
+- **Frontend:** React 19, TypeScript, Vite, Tailwind CSS, TanStack Query, Lucide Icons.
+- **GenAI & Orchestration:** LangGraph, OpenAI / Anthropic provider abstraction, MockLLMProvider, dense vector embeddings, hybrid RAG.
+- **DevOps:** Docker Compose, Multi-stage Dockerfiles, GitHub Actions CI/CD.
+
+---
+
+## 6. Quickstart & Local Setup
+
+### Prerequisites
+- Python 3.12+ (or installed via `uv`)
+- Node.js 20+
+- `uv` package manager (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+
+### Step 1: Install Dependencies
+```bash
+# Backend dependencies
+cd backend
+uv sync --all-groups
+
+# Frontend dependencies
+cd ../frontend
+npm install
+```
+
+### Step 2: Run Backend Tests
+```bash
+cd backend
+uv run pytest -v
+```
+*(All 11 unit, integration, and E2E lifecycle tests pass in ~1.0s).*
+
+### Step 3: Run the 50-Case Evaluation Benchmark
+```bash
+cd backend
+uv run python ../evals/scripts/run_evals.py
+```
+
+### Step 4: Start Development Servers
+
+**Terminal 1 — Backend:**
+```bash
+cd backend
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+- API Swagger Documentation: `http://127.0.0.1:8000/docs`
+- Health Endpoint: `http://127.0.0.1:8000/api/v1/health`
+
+**Terminal 2 — Frontend:**
+```bash
+cd frontend
+npm run dev
+```
+- Web Application: `http://localhost:5173`
+
+---
+
+## 7. Docker Compose Deployment
+
+To run the complete production container stack (API, Frontend, PostgreSQL 16, Redis 7):
+
+```bash
+docker compose up --build -d
+```
+
+- Web Console: `http://localhost:5173`
+- Backend API Docs: `http://localhost:8000/docs`
+
+---
+
+## 8. The 5-Minute Product Walkthrough
+
+1. **Dashboard Overview (0:00–0:45):**  
+   Open `http://localhost:5173`. Point out operational KPIs: Straight-Through Completion Rate, Latency, Hours Saved, and LLM Token Economics.
+2. **Document Ingestion (0:45–1:30):**  
+   Click **Upload Document**. Select the pre-configured *1. Clean Match* scenario. Observe non-blocking HTTP 202 ingestion, background processing, and automated straight-through posting to the simulated ERP.
+3. **Deterministic Exception & RAG (1:30–2:30):**  
+   Upload *2. High-Value ($15.4k)* or *3. PO Tolerance Mismatch*. The validation engine flags the rule violation, halts automated posting, and routes the document to `REVIEW REQUIRED`.
+4. **Split-Screen Human Review Console (2:30–4:00):**  
+   Navigate to **Review Queue**. Examine the left pane (document evidence) and right pane (editable fields, deterministic failure diagnostics, and grounded policy citations with exact page numbers). Click **Approve & Post to ERP**.
+5. **Observability & Audit Trail (4:00–5:00):**  
+   Open **Agent Telemetry** to view the LangGraph execution trace, node latencies, and tool calls. Inspect **Audit Trail** for the immutable log entry recording the human review approval.
+
+---
+
+## 9. Architectural Interrogation & Defense
+
+For deep technical rationales behind every design decision, library choice, and security boundary:
+- Comprehensive Architectural Dossier: [`PROJECT_INTERROGATION.md`](PROJECT_INTERROGATION.md)
+- Interactive Jupyter Notebook: [`notebooks/project_interrogation.ipynb`](notebooks/project_interrogation.ipynb)
+- Master Architecture Plan: [`Flagship_Project_Architecture_Plan.md`](Flagship_Project_Architecture_Plan.md)

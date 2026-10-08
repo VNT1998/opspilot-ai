@@ -1,0 +1,272 @@
+import json
+from typing import Annotated, List, Optional
+from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy import desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from app.api.deps import get_current_user, require_permission
+from app.core.errors import NotFoundError, ValidationError
+from app.core.rbac import Permission
+from app.db.session import get_db
+from app.models.document import Document
+from app.models.erp import Invoice
+from app.models.extraction import DocumentExtraction
+from app.models.review import ReviewAction, ReviewTask
+from app.models.user import User
+from app.models.workflow import WorkflowRun
+from app.schemas.review import ReviewActionRequest, ReviewDecisionResponse, ReviewTaskResponse
+from app.services.audit.service import AuditService
+
+router = APIRouter(prefix="/reviews", tags=["Human Review"])
+
+
+@router.get("", response_model=List[ReviewTaskResponse])
+async def list_review_tasks(
+    current_user: User = Depends(require_permission(Permission.REVIEW_READ)),
+    db: AsyncSession = Depends(get_db),
+    status_filter: Optional[str] = Query("PENDING", alias="status"),
+):
+    """Lists human review tasks filtered by status."""
+    stmt = (
+        select(ReviewTask)
+        .options(
+            selectinload(ReviewTask.document).selectinload(Document.extraction),
+            selectinload(ReviewTask.document).selectinload(Document.pages),
+        )
+        .where(ReviewTask.tenant_id == current_user.tenant_id)
+        .order_by(desc(ReviewTask.created_at))
+    )
+    if status_filter:
+        stmt = stmt.where(ReviewTask.status == status_filter)
+
+    res = await db.execute(stmt)
+    tasks = res.scalars().all()
+    return [ReviewTaskResponse.model_validate(t) for t in tasks]
+
+
+@router.get("/{task_id}", response_model=ReviewTaskResponse)
+async def get_review_task(
+    task_id: str,
+    current_user: User = Depends(require_permission(Permission.REVIEW_READ)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieves full details for a review task including document evidence and extracted fields."""
+    stmt = (
+        select(ReviewTask)
+        .options(
+            selectinload(ReviewTask.document).selectinload(Document.extraction),
+            selectinload(ReviewTask.document).selectinload(Document.pages),
+        )
+        .where(ReviewTask.id == task_id, ReviewTask.tenant_id == current_user.tenant_id)
+    )
+    task = (await db.execute(stmt)).scalar_one_or_none()
+    if not task:
+        raise NotFoundError("ReviewTask", task_id)
+
+    return ReviewTaskResponse.model_validate(task)
+
+
+@router.post("/{task_id}/approve", response_model=ReviewDecisionResponse)
+async def approve_review_task(
+    task_id: str,
+    body: ReviewActionRequest,
+    current_user: User = Depends(require_permission(Permission.REVIEW_APPROVE)),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Reviewer approves the document exception. Updates review state,
+    posts invoice to simulated ERP system, marks document as COMPLETED, and records audit trail.
+    """
+    stmt = select(ReviewTask).where(ReviewTask.id == task_id, ReviewTask.tenant_id == current_user.tenant_id)
+    task = (await db.execute(stmt)).scalar_one_or_none()
+    if not task:
+        raise NotFoundError("ReviewTask", task_id)
+
+    task.status = "RESOLVED"
+    task.assigned_to_user_id = current_user.id
+    task.resolution_notes = body.comments or "Approved by human reviewer."
+
+    # Record ReviewAction
+    act = ReviewAction(
+        tenant_id=current_user.tenant_id,
+        review_task_id=task.id,
+        user_id=current_user.id,
+        action="APPROVE",
+        comments=body.comments,
+    )
+    db.add(act)
+
+    # Update Document status
+    doc_stmt = select(Document).where(Document.id == task.document_id, Document.tenant_id == current_user.tenant_id)
+    doc = (await db.execute(doc_stmt)).scalar_one_or_none()
+    if doc:
+        doc.status = "APPROVED"
+
+    # Post or update Invoice in ERP
+    ext_stmt = select(DocumentExtraction).where(DocumentExtraction.document_id == task.document_id, DocumentExtraction.tenant_id == current_user.tenant_id)
+    ext = (await db.execute(ext_stmt)).scalar_one_or_none()
+    if ext:
+        data = json.loads(ext.structured_data)
+        inv = Invoice(
+            tenant_id=current_user.tenant_id,
+            document_id=task.document_id,
+            invoice_number=data.get("invoice_number", "INV-APPROVED"),
+            vendor_name=data.get("vendor_name", "Vendor"),
+            po_number=data.get("po_number"),
+            total_amount=data.get("total", 0.0),
+            currency=data.get("currency", "USD"),
+            status="POSTED",
+            validation_status="HUMAN_OVERRIDE_APPROVED",
+        )
+        db.add(inv)
+
+    # Resume workflow run if present
+    if task.workflow_run_id:
+        wf_stmt = select(WorkflowRun).where(WorkflowRun.id == task.workflow_run_id, WorkflowRun.tenant_id == current_user.tenant_id)
+        wf = (await db.execute(wf_stmt)).scalar_one_or_none()
+        if wf:
+            wf.status = "COMPLETED"
+            wf.result_summary = "Approved and resumed by human reviewer."
+
+    await db.commit()
+
+    # Log audit event
+    await AuditService.log_event(
+        db=db,
+        tenant_id=current_user.tenant_id,
+        action="REVIEW_TASK_APPROVED",
+        entity_type="ReviewTask",
+        entity_id=task.id,
+        user_id=current_user.id,
+        after_state={"comments": body.comments, "document_id": task.document_id},
+    )
+
+    return ReviewDecisionResponse(
+        message="Review approved successfully. Invoice posted to ERP.",
+        task_id=task.id,
+        status="RESOLVED",
+        workflow_status="COMPLETED",
+    )
+
+
+@router.post("/{task_id}/reject", response_model=ReviewDecisionResponse)
+async def reject_review_task(
+    task_id: str,
+    body: ReviewActionRequest,
+    current_user: User = Depends(require_permission(Permission.REVIEW_REJECT)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reviewer rejects the document."""
+    stmt = select(ReviewTask).where(ReviewTask.id == task_id, ReviewTask.tenant_id == current_user.tenant_id)
+    task = (await db.execute(stmt)).scalar_one_or_none()
+    if not task:
+        raise NotFoundError("ReviewTask", task_id)
+
+    task.status = "REJECTED"
+    task.assigned_to_user_id = current_user.id
+    task.resolution_notes = body.comments or "Rejected by human reviewer."
+
+    act = ReviewAction(
+        tenant_id=current_user.tenant_id,
+        review_task_id=task.id,
+        user_id=current_user.id,
+        action="REJECT",
+        comments=body.comments,
+    )
+    db.add(act)
+
+    doc_stmt = select(Document).where(Document.id == task.document_id, Document.tenant_id == current_user.tenant_id)
+    doc = (await db.execute(doc_stmt)).scalar_one_or_none()
+    if doc:
+        doc.status = "REJECTED"
+
+    if task.workflow_run_id:
+        wf_stmt = select(WorkflowRun).where(WorkflowRun.id == task.workflow_run_id, WorkflowRun.tenant_id == current_user.tenant_id)
+        wf = (await db.execute(wf_stmt)).scalar_one_or_none()
+        if wf:
+            wf.status = "FAILED"
+            wf.result_summary = f"Rejected by reviewer: {body.comments}"
+
+    await db.commit()
+
+    await AuditService.log_event(
+        db=db,
+        tenant_id=current_user.tenant_id,
+        action="REVIEW_TASK_REJECTED",
+        entity_type="ReviewTask",
+        entity_id=task.id,
+        user_id=current_user.id,
+        after_state={"comments": body.comments},
+    )
+
+    return ReviewDecisionResponse(
+        message="Review rejected.",
+        task_id=task.id,
+        status="REJECTED",
+        workflow_status="FAILED",
+    )
+
+
+@router.post("/{task_id}/edit", response_model=ReviewDecisionResponse)
+async def edit_and_approve_review_task(
+    task_id: str,
+    body: ReviewActionRequest,
+    current_user: User = Depends(require_permission(Permission.REVIEW_EDIT)),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Reviewer modifies extracted field values (e.g. correcting OCR errors),
+    saves corrections, approves document, and updates ERP record.
+    """
+    stmt = select(ReviewTask).where(ReviewTask.id == task_id, ReviewTask.tenant_id == current_user.tenant_id)
+    task = (await db.execute(stmt)).scalar_one_or_none()
+    if not task:
+        raise NotFoundError("ReviewTask", task_id)
+
+    edited = body.edited_fields or {}
+
+    # Update DocumentExtraction structured data
+    ext_stmt = select(DocumentExtraction).where(DocumentExtraction.document_id == task.document_id, DocumentExtraction.tenant_id == current_user.tenant_id)
+    ext = (await db.execute(ext_stmt)).scalar_one_or_none()
+    if ext:
+        current_data = json.loads(ext.structured_data)
+        current_data.update(edited)
+        ext.structured_data = json.dumps(current_data)
+        ext.is_valid = True
+
+    task.status = "RESOLVED"
+    task.resolution_notes = f"Edited fields: {list(edited.keys())}. {body.comments or ''}"
+
+    act = ReviewAction(
+        tenant_id=current_user.tenant_id,
+        review_task_id=task.id,
+        user_id=current_user.id,
+        action="EDIT",
+        comments=body.comments,
+        field_diffs=json.dumps(edited),
+    )
+    db.add(act)
+
+    doc_stmt = select(Document).where(Document.id == task.document_id, Document.tenant_id == current_user.tenant_id)
+    doc = (await db.execute(doc_stmt)).scalar_one_or_none()
+    if doc:
+        doc.status = "APPROVED"
+
+    await db.commit()
+
+    await AuditService.log_event(
+        db=db,
+        tenant_id=current_user.tenant_id,
+        action="REVIEW_TASK_EDITED_AND_APPROVED",
+        entity_type="ReviewTask",
+        entity_id=task.id,
+        user_id=current_user.id,
+        after_state={"diffs": edited, "comments": body.comments},
+    )
+
+    return ReviewDecisionResponse(
+        message="Corrections saved and approved successfully.",
+        task_id=task.id,
+        status="RESOLVED",
+        workflow_status="COMPLETED",
+    )
