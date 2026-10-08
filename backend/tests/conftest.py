@@ -60,6 +60,15 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
                 is_active=True,
             ),
             User(
+                id="usr_ops_1",
+                tenant_id=tenant.id,
+                email="ops@test.com",
+                hashed_password=hash_password("ops123"),
+                full_name="Ops Manager Test",
+                role="ops_manager",
+                is_active=True,
+            ),
+            User(
                 id="usr_reviewer_1",
                 tenant_id=tenant.id,
                 email="reviewer@test.com",
@@ -142,6 +151,16 @@ def admin_token() -> str:
         tenant_id="tenant_test",
         role="admin",
         extra_claims={"email": "admin@test.com", "name": "Admin Test"},
+    )
+
+
+@pytest.fixture
+def ops_token() -> str:
+    return create_access_token(
+        subject="usr_ops_1",
+        tenant_id="tenant_test",
+        role="ops_manager",
+        extra_claims={"email": "ops@test.com", "name": "Ops Manager Test"},
     )
 
 

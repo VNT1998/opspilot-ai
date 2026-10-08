@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Literal
+from typing import List, Literal, Optional
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,6 +42,9 @@ class Settings(BaseSettings):
     # Storage
     STORAGE_TYPE: Literal["local", "s3"] = "local"
     LOCAL_STORAGE_PATH: str = "./data/storage"
+    S3_BUCKET_NAME: str = "opspilot-documents"
+    S3_REGION: str = "us-east-1"
+    S3_ENDPOINT_URL: Optional[str] = None
     MAX_UPLOAD_SIZE_BYTES: int = 20 * 1024 * 1024  # 20 MB
     ALLOWED_EXTENSIONS: List[str] = [".pdf", ".png", ".jpg", ".jpeg", ".docx", ".txt"]
 
@@ -65,6 +69,19 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
     ]
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        if self.ENVIRONMENT == "production":
+            if (
+                not self.SECRET_KEY
+                or self.SECRET_KEY == "insecure-dev-secret-key-change-in-production-opspilot-2026"
+                or len(self.SECRET_KEY) < 32
+            ):
+                raise ValueError(
+                    "Production environment requires a strong, explicit SECRET_KEY with at least 32 characters."
+                )
+        return self
 
 
 @lru_cache()

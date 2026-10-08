@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.api.deps import get_current_user, require_permission
@@ -15,7 +15,7 @@ from app.models.user import User
 from app.schemas.document import DocumentListResponse, DocumentReprocessRequest, DocumentResponse
 from app.services.audit.service import AuditService
 from app.services.queue.worker import get_job_worker
-from app.services.storage.local import get_storage_provider
+from app.services.storage import get_storage_provider
 
 settings = get_settings()
 router = APIRouter(prefix="/documents", tags=["Documents"])
@@ -31,16 +31,32 @@ async def upload_document(
     Ingests a document file, persists it to storage, creates a database record,
     and enqueues an asynchronous processing job, returning 202 Accepted immediately.
     """
-    ext = Path(file.filename or "upload.bin").suffix.lower()
+    safe_filename = Path(file.filename or "upload.bin").name
+    # Strip potential path traversal characters
+    safe_filename = safe_filename.replace("..", "").replace("/", "").replace("\\", "")
+    ext = Path(safe_filename).suffix.lower()
     if ext not in settings.ALLOWED_EXTENSIONS:
         raise ValidationError(f"File extension '{ext}' is not supported. Allowed: {settings.ALLOWED_EXTENSIONS}")
 
     content = await file.read()
+    if not content:
+        raise ValidationError("Uploaded file is empty (0 bytes).")
+
     if len(content) > settings.MAX_UPLOAD_SIZE_BYTES:
         raise ValidationError(f"File size exceeds maximum permitted limit of {settings.MAX_UPLOAD_SIZE_BYTES // (1024*1024)}MB")
 
+    # Magic byte signature sniffing
+    if ext == ".pdf" and not content.startswith(b"%PDF"):
+        raise ValidationError("File content signature does not match declared PDF format.")
+    elif ext == ".png" and not content.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise ValidationError("File content signature does not match declared PNG format.")
+    elif ext in (".jpg", ".jpeg") and not content.startswith(b"\xff\xd8\xff"):
+        raise ValidationError("File content signature does not match declared JPEG format.")
+    elif ext == ".docx" and not content.startswith(b"PK\x03\x04"):
+        raise ValidationError("File content signature does not match declared DOCX format.")
+
     storage = get_storage_provider()
-    storage_path = await storage.save_file(content, file.filename or "upload.bin", current_user.tenant_id)
+    storage_path = await storage.save_file(content, safe_filename, current_user.tenant_id)
 
     # Create Document record
     doc = Document(
@@ -95,23 +111,27 @@ async def list_documents(
     page_size: int = Query(20, ge=1, le=100),
 ):
     """Lists tenant documents with filtering and pagination."""
-    stmt = (
+    base_conditions = [Document.tenant_id == current_user.tenant_id]
+    if status_filter:
+        base_conditions.append(Document.status == status_filter)
+    if classification:
+        base_conditions.append(Document.classification == classification)
+
+    # 1. Database-level COUNT(*)
+    count_stmt = select(func.count(Document.id)).where(*base_conditions)
+    total = (await db.execute(count_stmt)).scalar() or 0
+
+    # 2. Database-level LIMIT and OFFSET
+    paged_stmt = (
         select(Document)
         .options(selectinload(Document.pages), selectinload(Document.extraction))
-        .where(Document.tenant_id == current_user.tenant_id)
+        .where(*base_conditions)
         .order_by(desc(Document.created_at))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
     )
-    if status_filter:
-        stmt = stmt.where(Document.status == status_filter)
-    if classification:
-        stmt = stmt.where(Document.classification == classification)
-
-    # Simple count & slice
-    res = await db.execute(stmt)
-    all_docs = res.scalars().all()
-    total = len(all_docs)
-    start_idx = (page - 1) * page_size
-    paged_docs = all_docs[start_idx : start_idx + page_size]
+    res = await db.execute(paged_stmt)
+    paged_docs = res.scalars().all()
 
     return DocumentListResponse(
         items=[DocumentResponse.model_validate(d) for d in paged_docs],

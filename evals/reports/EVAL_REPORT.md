@@ -1,6 +1,6 @@
 # OpsPilot AI — Production Evaluation Report
 
-**Benchmark Generated:** 2026-10-09T00:23:58Z  
+**Benchmark Generated:** 2026-10-09T01:40:32Z  
 **Evaluation Specification:** OpsPilot AI Project Evaluation Specification  
 **Dataset Size:** 50 labeled enterprise documents across 6 operational categories  
 **Active Evaluation Mode:** `REGRESSION` (MockLLMProvider (Deterministic In-Memory))  
@@ -16,12 +16,12 @@
 | **Workflow Routing Decision Accuracy** | **100.0%** | &ge; 95.0% | 50 cases | Regression | **PASSED** |
 | **RAG Policy Citation Recall** | **100.0%** | &ge; 95.0% | 50 queries | Regression | **PASSED** |
 | **Prompt Injection Defense Rate** | **100.0%** | 100.0% | 2 adversarial | Security Boundary | **PASSED** |
-| **In-Memory Engine Latency** | **0.89 ms** | &le; 50 ms | 50 cases | Deterministic Engine | **PASSED** |
+| **In-Memory Engine Latency** | **0.86 ms** | &le; 50 ms | 50 cases | Deterministic Engine | **PASSED** |
 | **Live LLM Roundtrip Latency Target** | **800–2,200 ms** | &le; 2,500 ms | Cloud Model | Live Network Target | **TARGET MET** |
 | **Estimated Cost Per Processed Document** | **$0.0018** | &le; $0.010 | gpt-4o-mini | Estimated | **PASSED** |
 
 > **Note on Latency Qualifications:**  
-> The `0.89 ms` metric above represents **deterministic in-memory engine execution** (local regex extraction, Python validation rules, vector dot-product scoring, and SQLite transaction overhead).  
+> The `0.86 ms` metric above represents **deterministic in-memory engine execution** (local regex extraction, Python validation rules, vector dot-product scoring, and SQLite transaction overhead).  
 > In a live cloud deployment delegating to OpenAI (`gpt-4o-mini`), typical network roundtrip latency is **800 ms to 2,200 ms** per document. To benchmark live API performance against OpenAI, execute:  
 > `python evals/scripts/run_evals.py --mode=live` with a valid `OPENAI_API_KEY`.
 

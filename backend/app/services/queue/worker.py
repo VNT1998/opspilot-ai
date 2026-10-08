@@ -13,7 +13,7 @@ from app.models.workflow import WorkflowRun
 from app.services.agents.graph import AgentWorkflowService
 from app.services.agents.state import OpsPilotState
 from app.services.llm.factory import get_llm_provider
-from app.services.storage.local import get_storage_provider
+from app.services.storage import get_storage_provider
 
 settings = get_settings()
 
@@ -81,17 +81,37 @@ class JobQueueWorker:
                 wf.status = "RUNNING"
             await db.commit()
 
-            # Read document file content
+            # Read document file content using modular parser router
             storage = get_storage_provider()
+            from app.models.document import DocumentPage
+            from app.services.parsing.router import get_document_parser_router
+
             try:
                 file_bytes = await storage.get_file(doc.storage_path)
-                # Decode text if text or docx, else representable string
-                try:
-                    raw_text = file_bytes.decode("utf-8")
-                except UnicodeDecodeError:
-                    raw_text = f"Binary Document Stream ({doc.filename}) - Invoice for Acme Industrial Supplies, Total $1450.00, PO-9001"
-            except Exception as e:
-                raw_text = f"Extracted Document Text for {doc.filename}. Amount: $1450.00, PO-9001."
+                parser_router = get_document_parser_router()
+                parsed_doc = await parser_router.parse_document(file_bytes, doc.filename)
+                raw_text = parsed_doc.text
+
+                # Persist page-level parsed text
+                for p in parsed_doc.pages:
+                    page_record = DocumentPage(
+                        document_id=doc.id,
+                        page_number=p.page_number,
+                        text=p.text,
+                        confidence_score=p.confidence,
+                    )
+                    db.add(page_record)
+                await db.commit()
+            except Exception as parse_err:
+                logger.error(f"Document parsing failed for doc {doc_id}: {parse_err}")
+                doc.status = "FAILED"
+                if wf:
+                    wf.status = "FAILED"
+                    wf.failure_code = "PARSING_ERROR"
+                    wf.failure_message = str(parse_err)
+                    wf.result_summary = f"Document parsing failed: {str(parse_err)}"
+                await db.commit()
+                return
 
             # Construct initial LangGraph State
             initial_state: OpsPilotState = {
@@ -121,6 +141,9 @@ class JobQueueWorker:
                     job["attempt"] += 1
                     backoff_delay = 2 ** (job["attempt"] - 1)
                     logger.info(f"Retrying job {wf_id} in {backoff_delay}s...")
+                    if wf:
+                        wf.retry_count = job["attempt"]
+                        await db.commit()
                     await asyncio.sleep(backoff_delay)
                     await self._queue.put(job)
                 else:
@@ -130,6 +153,9 @@ class JobQueueWorker:
                     doc.status = "FAILED"
                     if wf:
                         wf.status = "FAILED"
+                        wf.retry_count = job["attempt"]
+                        wf.failure_code = "PIPELINE_ERROR"
+                        wf.failure_message = str(exc)
                         wf.result_summary = f"Processing failed after max retries: {str(exc)}"
                     await db.commit()
 

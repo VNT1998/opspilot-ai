@@ -5,7 +5,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.api.deps import get_current_user, require_permission
-from app.core.errors import NotFoundError, ValidationError
+from app.core.errors import ForbiddenError, NotFoundError, ValidationError
 from app.core.rbac import Permission
 from app.db.session import get_db
 from app.models.document import Document
@@ -14,8 +14,11 @@ from app.models.extraction import DocumentExtraction
 from app.models.review import ReviewAction, ReviewTask
 from app.models.user import User
 from app.models.workflow import WorkflowRun
+from app.schemas.extraction import InvoiceExtractionSchema
 from app.schemas.review import ReviewActionRequest, ReviewDecisionResponse, ReviewTaskResponse
 from app.services.audit.service import AuditService
+from app.services.erp.service import ERPService
+from app.services.validation.engine import ValidationEngine
 
 router = APIRouter(prefix="/reviews", tags=["Human Review"])
 
@@ -102,12 +105,13 @@ async def approve_review_task(
     if doc:
         doc.status = "APPROVED"
 
-    # Post or update Invoice in ERP
+    # Post or update Invoice in ERP via centralized ERPService
     ext_stmt = select(DocumentExtraction).where(DocumentExtraction.document_id == task.document_id, DocumentExtraction.tenant_id == current_user.tenant_id)
     ext = (await db.execute(ext_stmt)).scalar_one_or_none()
     if ext:
         data = json.loads(ext.structured_data)
-        inv = Invoice(
+        erp_service = ERPService(db)
+        await erp_service.post_invoice(
             tenant_id=current_user.tenant_id,
             document_id=task.document_id,
             invoice_number=data.get("invoice_number", "INV-APPROVED"),
@@ -115,10 +119,11 @@ async def approve_review_task(
             po_number=data.get("po_number"),
             total_amount=data.get("total", 0.0),
             currency=data.get("currency", "USD"),
-            status="POSTED",
+            source="human",
+            actor_id=current_user.id,
             validation_status="HUMAN_OVERRIDE_APPROVED",
+            comments=body.comments,
         )
-        db.add(inv)
 
     # Resume workflow run if present
     if task.workflow_run_id:
@@ -228,13 +233,62 @@ async def edit_and_approve_review_task(
     # Update DocumentExtraction structured data
     ext_stmt = select(DocumentExtraction).where(DocumentExtraction.document_id == task.document_id, DocumentExtraction.tenant_id == current_user.tenant_id)
     ext = (await db.execute(ext_stmt)).scalar_one_or_none()
-    if ext:
-        current_data = json.loads(ext.structured_data)
-        current_data.update(edited)
-        ext.structured_data = json.dumps(current_data)
-        ext.is_valid = True
+    if not ext:
+        raise NotFoundError("DocumentExtraction", task.document_id)
+
+    current_data = json.loads(ext.structured_data)
+    current_data.update(edited)
+
+    # 1. Re-validate through Pydantic InvoiceExtractionSchema
+    try:
+        validated_invoice = InvoiceExtractionSchema.model_validate(current_data)
+    except Exception as val_err:
+        raise ValidationError(f"Edited fields failed schema validation: {str(val_err)}")
+
+    # 2. Re-run deterministic ValidationEngine
+    validator = ValidationEngine(db)
+    confidences = {}
+    if ext.field_confidences:
+        try:
+            confidences = json.loads(ext.field_confidences) if isinstance(ext.field_confidences, str) else ext.field_confidences
+        except Exception:
+            confidences = {}
+    val_res = await validator.validate_invoice(
+        tenant_id=current_user.tenant_id,
+        extraction=validated_invoice,
+        field_confidences=confidences,
+    )
+
+    # 3. Check role authorization on high-value threshold
+    if validated_invoice.total >= 10000.0 and current_user.role not in ("admin", "ops_manager"):
+        raise ForbiddenError(
+            f"Edited invoice total (${validated_invoice.total:,.2f}) exceeds the $10,000 policy threshold and strictly requires Operations Manager or Admin sign-off."
+        )
+
+    # 4. Update DocumentExtraction with revalidated state and findings
+    ext.structured_data = json.dumps(validated_invoice.model_dump())
+    ext.is_valid = val_res.is_clean
+    ext.validation_findings = json.dumps([f.model_dump() for f in val_res.findings])
+
+    # 5. Post to ERP via centralized ERPService
+    erp_service = ERPService(db)
+    await erp_service.post_invoice(
+        tenant_id=current_user.tenant_id,
+        document_id=task.document_id,
+        invoice_number=validated_invoice.invoice_number,
+        vendor_name=validated_invoice.vendor_name,
+        po_number=validated_invoice.po_number,
+        total_amount=validated_invoice.total,
+        currency=validated_invoice.currency,
+        source="human",
+        actor_id=current_user.id,
+        validation_status="HUMAN_EDITED_APPROVED",
+        line_items=validated_invoice.line_items,
+        comments=body.comments,
+    )
 
     task.status = "RESOLVED"
+    task.assigned_to_user_id = current_user.id
     task.resolution_notes = f"Edited fields: {list(edited.keys())}. {body.comments or ''}"
 
     act = ReviewAction(
@@ -250,7 +304,15 @@ async def edit_and_approve_review_task(
     doc_stmt = select(Document).where(Document.id == task.document_id, Document.tenant_id == current_user.tenant_id)
     doc = (await db.execute(doc_stmt)).scalar_one_or_none()
     if doc:
-        doc.status = "APPROVED"
+        doc.status = "COMPLETED"
+
+    # Resume workflow run if present
+    if task.workflow_run_id:
+        wf_stmt = select(WorkflowRun).where(WorkflowRun.id == task.workflow_run_id, WorkflowRun.tenant_id == current_user.tenant_id)
+        wf = (await db.execute(wf_stmt)).scalar_one_or_none()
+        if wf:
+            wf.status = "COMPLETED"
+            wf.result_summary = "Edited, revalidated, and approved by human reviewer."
 
     await db.commit()
 

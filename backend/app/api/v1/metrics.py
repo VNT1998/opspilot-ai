@@ -54,21 +54,23 @@ async def get_metrics_summary(
     # 5. Economic savings: 15 mins (0.25h) manual processing saved per document
     hours_saved = round(len(completed_docs) * 0.25, 2)
 
-    # 6. Agent telemetry tokens and costs
+    # 6. Agent telemetry tokens, costs, and measured latency
     agent_stmt = select(
         func.coalesce(func.sum(AgentRun.input_tokens + AgentRun.output_tokens), 0),
         func.coalesce(func.sum(AgentRun.total_cost), 0.0),
+        func.coalesce(func.avg(AgentRun.duration_ms), 0.0),
     ).where(AgentRun.tenant_id == current_user.tenant_id)
     agent_res = (await db.execute(agent_stmt)).first()
     total_tokens = int(agent_res[0]) if agent_res else 0
     total_cost = round(float(agent_res[1]), 4) if agent_res else 0.0
+    avg_latency = round(float(agent_res[2]), 1) if agent_res else 0.0
 
     return MetricsSummaryResponse(
         total_documents=total_docs,
         documents_today=docs_today,
         auto_completion_rate=auto_rate,
         review_queue_size=rev_count,
-        avg_processing_latency_ms=480.0,
+        avg_processing_latency_ms=avg_latency,
         avg_confidence_score=avg_conf,
         exception_rate=exc_rate,
         estimated_hours_saved=hours_saved,

@@ -1,4 +1,5 @@
-from typing import Dict, List, Optional
+from decimal import Decimal, ROUND_HALF_UP
+from typing import Any, Dict, List, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
@@ -7,6 +8,13 @@ from app.schemas.extraction import InvoiceExtractionSchema
 from app.schemas.validation import BusinessValidationResult, ValidationFinding
 
 settings = get_settings()
+
+
+def to_decimal(val: Any) -> Decimal:
+    """Normalize any numeric representation to 2-decimal-place Decimal."""
+    if val is None:
+        return Decimal("0.00")
+    return Decimal(str(val)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 class ValidationEngine:
@@ -23,8 +31,9 @@ class ValidationEngine:
         self,
         tenant_id: str,
         extraction: InvoiceExtractionSchema,
-        field_confidences: Dict[str, float],
+        field_confidences: Optional[Dict[str, float]] = None,
     ) -> BusinessValidationResult:
+        field_confidences = field_confidences or {}
         findings: List[ValidationFinding] = []
         requires_review = False
         routing_reasons: List[str] = []
@@ -53,18 +62,20 @@ class ValidationEngine:
             )
 
         # 2. Check Mathematical Integrity: Subtotal + Tax == Total
-        expected_total = round(extraction.subtotal + extraction.tax, 2)
-        actual_total = round(extraction.total, 2)
-        total_diff = round(abs(expected_total - actual_total), 2)
-        if total_diff > 0.05:
+        subtotal_dec = to_decimal(extraction.subtotal)
+        tax_dec = to_decimal(extraction.tax)
+        total_dec = to_decimal(extraction.total)
+        expected_total_dec = subtotal_dec + tax_dec
+        total_diff_dec = abs(expected_total_dec - total_dec)
+        if total_diff_dec > Decimal("0.05"):
             findings.append(
                 ValidationFinding(
                     rule_name="tax_subtotal_arithmetic",
                     passed=False,
                     severity="ERROR",
-                    message=f"Subtotal ({extraction.subtotal}) + Tax ({extraction.tax}) != Total ({extraction.total})",
-                    expected_value=expected_total,
-                    actual_value=actual_total,
+                    message=f"Subtotal ({subtotal_dec}) + Tax ({tax_dec}) != Total ({total_dec})",
+                    expected_value=float(expected_total_dec),
+                    actual_value=float(total_dec),
                 )
             )
             requires_review = True
@@ -81,17 +92,20 @@ class ValidationEngine:
 
         # 3. Check Line Items Sum vs Subtotal
         if extraction.line_items:
-            line_sum = sum(round(item.quantity * item.unit_price, 2) for item in extraction.line_items)
-            line_diff = round(abs(line_sum - extraction.subtotal), 2)
-            if line_diff > 0.10:
+            line_sum_dec = sum(
+                (to_decimal(item.quantity) * to_decimal(item.unit_price)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                for item in extraction.line_items
+            )
+            line_diff_dec = abs(line_sum_dec - subtotal_dec)
+            if line_diff_dec > Decimal("0.10"):
                 findings.append(
                     ValidationFinding(
                         rule_name="line_items_reconciliation",
                         passed=False,
                         severity="WARNING",
-                        message=f"Sum of line items ({line_sum}) differs from subtotal ({extraction.subtotal})",
-                        expected_value=extraction.subtotal,
-                        actual_value=line_sum,
+                        message=f"Sum of line items ({line_sum_dec}) differs from subtotal ({subtotal_dec})",
+                        expected_value=float(subtotal_dec),
+                        actual_value=float(line_sum_dec),
                     )
                 )
                 requires_review = True
@@ -107,8 +121,8 @@ class ValidationEngine:
                 )
 
         # 4. Check Purchase Order matching & Variance
-        variance_amount = 0.0
-        variance_percent = 0.0
+        variance_amount_dec = Decimal("0.00")
+        variance_percent_dec = Decimal("0.00")
         if extraction.po_number:
             stmt = select(PurchaseOrder).where(
                 PurchaseOrder.tenant_id == tenant_id,
@@ -130,22 +144,30 @@ class ValidationEngine:
                 requires_review = True
                 routing_reasons.append(f"Referenced PO '{extraction.po_number}' not found")
             else:
-                # PO exists, calculate variance
-                variance_amount = round(abs(extraction.total - po.total_amount), 2)
-                variance_percent = round((variance_amount / po.total_amount) * 100.0, 2) if po.total_amount > 0 else 0.0
+                # PO exists, calculate variance with Decimal precision
+                po_total_dec = to_decimal(po.total_amount)
+                variance_amount_dec = abs(total_dec - po_total_dec)
+                variance_percent_dec = (
+                    ((variance_amount_dec / po_total_dec) * Decimal("100.00")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                    if po_total_dec > Decimal("0.00")
+                    else Decimal("0.00")
+                )
 
-                within_percent = variance_percent <= settings.VARIANCE_TOLERANCE_PERCENT
-                within_abs = variance_amount <= settings.VARIANCE_TOLERANCE_ABSOLUTE
+                tolerance_pct_dec = to_decimal(settings.VARIANCE_TOLERANCE_PERCENT)
+                tolerance_abs_dec = to_decimal(settings.VARIANCE_TOLERANCE_ABSOLUTE)
 
-                if within_percent or within_abs:
+                within_percent = variance_percent_dec <= tolerance_pct_dec
+                within_abs = variance_amount_dec <= tolerance_abs_dec
+
+                if within_percent and within_abs:
                     findings.append(
                         ValidationFinding(
                             rule_name="po_tolerance_check",
                             passed=True,
                             severity="INFO",
-                            message=f"PO variance within tolerance: ${variance_amount} ({variance_percent}%)",
-                            expected_value=po.total_amount,
-                            actual_value=extraction.total,
+                            message=f"PO variance within tolerance: ${variance_amount_dec} ({variance_percent_dec}%)",
+                            expected_value=float(po_total_dec),
+                            actual_value=float(total_dec),
                         )
                     )
                 else:
@@ -154,13 +176,13 @@ class ValidationEngine:
                             rule_name="po_tolerance_check",
                             passed=False,
                             severity="ERROR",
-                            message=f"PO variance exceeds tolerance: ${variance_amount} ({variance_percent}% > {settings.VARIANCE_TOLERANCE_PERCENT}%)",
-                            expected_value=po.total_amount,
-                            actual_value=extraction.total,
+                            message=f"PO variance exceeds tolerance: ${variance_amount_dec} ({variance_percent_dec}% > {settings.VARIANCE_TOLERANCE_PERCENT}%)",
+                            expected_value=float(po_total_dec),
+                            actual_value=float(total_dec),
                         )
                     )
                     requires_review = True
-                    routing_reasons.append(f"PO variance {variance_percent}% exceeds tolerance threshold")
+                    routing_reasons.append(f"PO variance {variance_percent_dec}% exceeds tolerance threshold")
         else:
             findings.append(
                 ValidationFinding(
@@ -172,19 +194,20 @@ class ValidationEngine:
             )
 
         # 5. Check High-Value Policy Threshold (>= $10,000)
-        if extraction.total >= settings.HIGH_VALUE_THRESHOLD:
+        high_value_dec = to_decimal(settings.HIGH_VALUE_THRESHOLD)
+        if total_dec >= high_value_dec:
             findings.append(
                 ValidationFinding(
                     rule_name="high_value_policy_threshold",
                     passed=False,
                     severity="WARNING",
-                    message=f"Invoice total (${extraction.total}) meets or exceeds high-value policy threshold (${settings.HIGH_VALUE_THRESHOLD})",
-                    expected_value=settings.HIGH_VALUE_THRESHOLD,
-                    actual_value=extraction.total,
+                    message=f"Invoice total (${total_dec}) meets or exceeds high-value policy threshold (${high_value_dec})",
+                    expected_value=float(high_value_dec),
+                    actual_value=float(total_dec),
                 )
             )
             requires_review = True
-            routing_reasons.append(f"High-value policy threshold ($10,000) requires human sign-off")
+            routing_reasons.append("High-value policy threshold ($10,000) requires human sign-off")
 
         # 6. Check Duplicate Invoice in DB
         dup_stmt = select(Invoice).where(
@@ -239,8 +262,8 @@ class ValidationEngine:
         return BusinessValidationResult(
             is_clean=is_clean,
             confidence_score=avg_confidence,
-            variance_amount=variance_amount,
-            variance_percent=variance_percent,
+            variance_amount=float(variance_amount_dec),
+            variance_percent=float(variance_percent_dec),
             requires_human_review=requires_review,
             routing_reason="; ".join(routing_reasons) if routing_reasons else None,
             findings=findings,

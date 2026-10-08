@@ -10,8 +10,11 @@ class WorkflowRun(Base, TenantScopedMixin, TimestampMixin):
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: f"wf_{uuid.uuid4().hex[:12]}")
     tenant_id: Mapped[str] = mapped_column(String(64), ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False)
     document_id: Mapped[str] = mapped_column(String(64), ForeignKey("documents.id", ondelete="CASCADE"), index=True, nullable=False)
-    status: Mapped[str] = mapped_column(String(50), default="PENDING", index=True, nullable=False)  # PENDING, RUNNING, PAUSED_FOR_REVIEW, COMPLETED, FAILED
+    status: Mapped[str] = mapped_column(String(50), default="PENDING", index=True, nullable=False)  # PENDING, RUNNING, REVIEW_REQUIRED, APPROVED, REJECTED, COMPLETED, FAILED
     current_step: Mapped[str] = mapped_column(String(100), default="intake", nullable=False)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    failure_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    failure_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     result_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     document: Mapped["Document"] = relationship("Document", back_populates="workflow_runs")  # noqa: F821

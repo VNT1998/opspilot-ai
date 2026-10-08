@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgrespassword}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-locally}
       POSTGRES_DB: ${POSTGRES_DB:-opspilot}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
@@ -40,17 +40,17 @@ services:
     container_name: opspilot-api
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgrespassword}@postgres:5432/${POSTGRES_DB:-opspilot}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-change-me-locally}@postgres:5432/${POSTGRES_DB:-opspilot}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - STORAGE_TYPE=${STORAGE_TYPE:-local}
       - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-mock}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-insecure-secret-key-change-in-production-2026}
-      - DEMO_ADMIN_PASSWORD=${DEMO_ADMIN_PASSWORD:-admin123}
-      - DEMO_OPS_PASSWORD=${DEMO_OPS_PASSWORD:-ops123}
-      - DEMO_REVIEWER_PASSWORD=${DEMO_REVIEWER_PASSWORD:-reviewer123}
-      - DEMO_VIEWER_PASSWORD=${DEMO_VIEWER_PASSWORD:-viewer123}
+      - SECRET_KEY=${SECRET_KEY:-generate-a-long-random-secret}
+      - DEMO_ADMIN_PASSWORD=${DEMO_ADMIN_PASSWORD:-}
+      - DEMO_OPS_PASSWORD=${DEMO_OPS_PASSWORD:-}
+      - DEMO_REVIEWER_PASSWORD=${DEMO_REVIEWER_PASSWORD:-}
+      - DEMO_VIEWER_PASSWORD=${DEMO_VIEWER_PASSWORD:-}
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:

@@ -54,21 +54,18 @@ export const setGlobalRole = (role: UserRole) => {
 export const getGlobalRole = (): UserRole => currentRole;
 
 export async function loginAs(role: UserRole): Promise<string> {
-  const user = DEMO_USERS[role];
-  const password = role === 'admin' ? 'admin123' : role === 'ops_manager' ? 'ops123' : role === 'reviewer' ? 'reviewer123' : 'viewer123';
-
   try {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await fetch(`${API_BASE}/auth/dev-token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: user.email, password }),
+      body: JSON.stringify({ role }),
     });
-    if (!res.ok) throw new Error('Login failed');
+    if (!res.ok) throw new Error('Role token retrieval failed');
     const data = await res.json();
     authTokens[role] = data.access_token;
     return data.access_token;
   } catch (e) {
-    console.warn(`Could not log in as ${role}, attempting without token:`, e);
+    console.warn(`Could not log in as ${role}:`, e);
     return '';
   }
 }

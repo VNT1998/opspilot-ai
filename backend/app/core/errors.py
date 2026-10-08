@@ -43,6 +43,9 @@ class AuthorizationError(OpsPilotException):
         )
 
 
+ForbiddenError = AuthorizationError
+
+
 class NotFoundError(OpsPilotException):
     def __init__(self, resource: str, identifier: Any):
         super().__init__(
@@ -98,3 +101,28 @@ class AIProviderError(OpsPilotException):
             retryable=retryable,
             details=full_details,
         )
+
+
+class StorageError(OpsPilotException):
+    def __init__(self, message: str, retryable: bool = False, details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            message=message,
+            code="STORAGE_ERROR",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            retryable=retryable,
+            details=details,
+        )
+
+
+class RateLimitExceededError(OpsPilotException):
+    def __init__(self, message: str = "Rate limit exceeded. Please retry later.", retry_after_seconds: int = 60, details: Optional[Dict[str, Any]] = None):
+        full_details = details or {}
+        full_details["retry_after_seconds"] = retry_after_seconds
+        super().__init__(
+            message=message,
+            code="RATE_LIMIT_EXCEEDED",
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            retryable=True,
+            details=full_details,
+        )
+

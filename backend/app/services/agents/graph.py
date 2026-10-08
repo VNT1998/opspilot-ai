@@ -217,8 +217,11 @@ class AgentWorkflowService:
 
             if decision == "APPROVE_AUTOMATICALLY":
                 # Create posted invoice in ERP
+                t_tool_start = time.time()
                 ext_dict = state.get("extracted_data", {})
-                inv = Invoice(
+                from app.services.erp.service import ERPService
+                erp_service = ERPService(self.db)
+                inv = await erp_service.post_invoice(
                     tenant_id=state["tenant_id"],
                     document_id=doc_id,
                     invoice_number=ext_dict.get("invoice_number", "INV-UNKNOWN"),
@@ -226,11 +229,11 @@ class AgentWorkflowService:
                     po_number=ext_dict.get("po_number"),
                     total_amount=ext_dict.get("total", 0.0),
                     currency=ext_dict.get("currency", "USD"),
-                    status="POSTED",
+                    source="agent",
+                    actor_id=state.get("user_id", "system"),
                     validation_status="CLEAN",
                 )
-                self.db.add(inv)
-                await self.db.flush()
+                t_tool_elapsed = max(int((time.time() - t_tool_start) * 1000), 1)
                 invoice_id = inv.id
 
                 # Update document status
@@ -239,10 +242,11 @@ class AgentWorkflowService:
                 if doc:
                     doc.status = "COMPLETED"
 
-                tool_calls.append({"tool": "post_invoice_erp", "status": "SUCCESS", "invoice_id": inv.id})
+                tool_calls.append({"tool": "post_invoice_erp", "status": "SUCCESS", "invoice_id": inv.id, "duration_ms": t_tool_elapsed})
                 logs.append(f"Action: Successfully posted invoice {inv.invoice_number} to ERP system")
             else:
                 # Escalate to Human Review Queue
+                t_tool_start = time.time()
                 review_out = await self.tools.create_review_task(
                     ctx,
                     CreateReviewTaskInput(
@@ -251,6 +255,7 @@ class AgentWorkflowService:
                         priority="HIGH" if "High-value" in state.get("decision_reason", "") else "MEDIUM",
                     ),
                 )
+                t_tool_elapsed = max(int((time.time() - t_tool_start) * 1000), 1)
                 review_task_id = review_out["task_id"]
 
                 # Update document status
@@ -259,7 +264,7 @@ class AgentWorkflowService:
                 if doc:
                     doc.status = "REVIEW_REQUIRED"
 
-                tool_calls.append({"tool": "create_review_task", "status": "SUCCESS", "task_id": review_task_id})
+                tool_calls.append({"tool": "create_review_task", "status": "SUCCESS", "task_id": review_task_id, "duration_ms": t_tool_elapsed})
                 logs.append(f"Action: Created Human Review Task {review_task_id}")
 
             out = {
@@ -296,8 +301,10 @@ class AgentWorkflowService:
 
     async def execute_workflow(self, initial_state: OpsPilotState) -> OpsPilotState:
         """Executes the complete compiled LangGraph workflow end-to-end."""
+        wf_start_t = time.time()
         app_graph = self.build_graph()
         final_state = await app_graph.ainvoke(initial_state)
+        total_duration_ms = max(int((time.time() - wf_start_t) * 1000), 1)
 
         # Update Document and WorkflowRun records with results
         wf_id = final_state.get("workflow_run_id")
@@ -308,7 +315,7 @@ class AgentWorkflowService:
             stmt = select(WorkflowRun).where(WorkflowRun.id == wf_id, WorkflowRun.tenant_id == tenant_id)
             wf = (await self.db.execute(stmt)).scalar_one_or_none()
             if wf:
-                wf.status = "COMPLETED" if final_state.get("decision") == "APPROVE_AUTOMATICALLY" else "PAUSED_FOR_REVIEW"
+                wf.status = "COMPLETED" if final_state.get("decision") == "APPROVE_AUTOMATICALLY" else "REVIEW_REQUIRED"
                 wf.current_step = "action"
                 wf.result_summary = final_state.get("decision_reason")
 
@@ -320,7 +327,7 @@ class AgentWorkflowService:
                 input_tokens=final_state.get("total_tokens", 600),
                 output_tokens=int(final_state.get("total_tokens", 600) * 0.4),
                 total_cost=final_state.get("total_cost", 0.002),
-                duration_ms=450,
+                duration_ms=total_duration_ms,
             )
             self.db.add(agent_run)
             await self.db.flush()
@@ -334,7 +341,7 @@ class AgentWorkflowService:
                     input_json=json.dumps({"document_id": doc_id}),
                     output_json=json.dumps(tc),
                     status=tc.get("status", "SUCCESS"),
-                    duration_ms=35,
+                    duration_ms=tc.get("duration_ms", 10),
                 )
                 self.db.add(call)
 

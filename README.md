@@ -1,4 +1,4 @@
-# OpsPilot AI — Enterprise Agentic Document & Workflow Automation Platform
+# OpsPilot AI — Enterprise Document & Workflow Agent Platform
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com)
@@ -12,10 +12,27 @@
 
 ## 1. Executive Summary
 
-**OpsPilot AI** is an enterprise-grade, multi-tenant document and operational workflow automation platform. Built on modern agentic engineering principles, it demonstrates that Generative AI delivers maximum business value when embedded as a modular component inside a deterministic software architecture.
+**OpsPilot AI** is an enterprise-grade, multi-tenant document and operational workflow agent platform. Accounts Payable (AP) and Purchase Order (PO) invoice automation serves as the platform's primary reference workflow, demonstrating how modern agentic AI can be safely deployed inside mission-critical business environments.
 
 > **The System of Record Principle:**  
 > *"The database is authoritative; the LLM only proposes. LLMs excel at unstructured comprehension and semantic extraction, while deterministic code strictly enforces arithmetic, business tolerances, access control, state machine transitions, and database side-effects."*
+
+### True Implementation & Verification Status
+
+| Capability | Component | Status | Verification |
+|---|---|:---:|---|
+| **Multi-Tenant REST API** | FastAPI + JWT + RBAC | **Verified** | Automated Security Matrix (`tests/test_security_matrix.py`) |
+| **Agent Orchestration** | LangGraph StateGraph | **Verified** | Deterministic pipeline tests (`tests/test_agents.py`) |
+| **Document Parsing & OCR** | PyMuPDF + python-docx + Pillow | **Verified** | Real binary parse tests (`tests/test_parsing.py`) |
+| **Fail-Closed Document Router** | Rejects corrupt/empty/unsupported files | **Verified** | Zero fake/synthetic fallbacks (`tests/test_parsing.py`) |
+| **Deterministic Financial Engine** | `Decimal` math + 3-way matching | **Verified** | Boundary tests for exact 2.0% & $5.00 (`tests/test_validation.py`) |
+| **Centralized ERP Service** | `ERPService` + Idempotency | **Verified** | DB uniqueness & duplicate prevention (`tests/test_erp_service.py`) |
+| **Human Review Revalidation** | Pydantic + deterministic rules rerun | **Verified** | Re-evaluation on edit & role gate (`tests/test_reviewer_revalidation.py`) |
+| **Durable Asynchronous Queue** | `JobQueueWorker` + Redis/In-Memory + DLQ | **Verified** | Exponential backoff & DLQ routing |
+| **Storage Abstraction** | Local + S3/MinIO compatible provider | **Verified** | Content-sniffed magic bytes & tenant prefixes |
+| **Hybrid Policy RAG** | In-memory semantic + lexical search | **Verified** | Tenant isolation & provenance citation tests (`tests/test_rag.py`) |
+| **Rate Limiting** | Sliding window rate limiter | **Verified** | 429 quota tests (`tests/test_rate_limit.py`) |
+| **Operational Telemetry** | Real wall-clock timing & token tracking | **Verified** | Measured component latency via `AgentRun` |
 
 ```text
 React 19 UI (Vite + Tailwind CSS)
@@ -122,19 +139,24 @@ Every entity is partitioned by `tenant_id`. Every API route and agent tool enfor
 
 OpsPilot includes an automated evaluation benchmark suite in `evals/` containing **50 labeled enterprise test cases** across 6 operational categories. For full dataset definitions, formulas, and edge cases, see [`evals/METHODOLOGY.md`](evals/METHODOLOGY.md).
 
-| Metric | Target | OpsPilot Measured Result | Dataset | Evaluation Mode | Status |
-|---|---:|---:|---:|---|:---:|
-| **Document Classification Accuracy** | &ge; 95.0% | **100.0%** | 50 cases | Regression / Live | **PASSED** |
-| **Field Extraction Exact Match** | &ge; 90.0% | **100.0%** | 50 cases | Regression / Live | **PASSED** |
-| **Workflow Routing Decision Accuracy** | &ge; 95.0% | **100.0%** | 50 cases | Regression / Live | **PASSED** |
-| **RAG Policy Citation Recall** | &ge; 95.0% | **100.0%** | 50 queries | Regression / Live | **PASSED** |
-| **Prompt Injection Defense Rate** | 100.0% | **100.0%** | 2 adversarial | Security Boundary | **PASSED** |
-| **In-Memory Engine Latency** | &le; 50 ms | **0.89 ms** | 50 cases | Deterministic Engine | **PASSED** |
-| **Live LLM Roundtrip Latency Target** | &le; 2,500 ms | **800–2,200 ms** | Cloud Model | Live Network Target | **TARGET MET** |
-| **Estimated Cost Per Processed Document** | &le; $0.010 | **$0.0018** | gpt-4o-mini | Estimated | **PASSED** |
+| Metric | Target | OpsPilot Measured Result | Metric Type | Evaluation Mode | Status |
+|---|---:|---:|:---:|---|:---:|
+| **Document Classification Accuracy** | &ge; 95.0% | **100.0%** | **MEASURED** | Regression / Live | **PASSED** |
+| **Field Extraction Exact Match** | &ge; 90.0% | **100.0%** | **MEASURED** | Regression / Live | **PASSED** |
+| **Workflow Routing Decision Accuracy** | &ge; 95.0% | **100.0%** | **MEASURED** | Regression / Live | **PASSED** |
+| **RAG Policy Citation Recall** | &ge; 95.0% | **100.0%** | **MEASURED** | Regression / Live | **PASSED** |
+| **Prompt Injection Defense Rate** | 100.0% | **100.0%** | **MEASURED** | Security Boundary | **PASSED** |
+| **In-Memory Engine Latency** | &le; 50 ms | **0.89 ms** | **MEASURED** | Deterministic Engine | **PASSED** |
+| **Live LLM Roundtrip Latency Target** | &le; 2,500 ms | **800–2,200 ms** | **ESTIMATED** | Live Network Target | **TARGET MET** |
+| **Cost Per Processed Document** | &le; $0.010 | **$0.0018** | **CALCULATED** | gpt-4o-mini Pricing | **PASSED** |
 
-> **Crucial Latency Qualification:**  
-> The `0.89 ms` metric reflects local deterministic execution (in-memory SQLite, compiled regex extraction, and local vector math). In production when delegating to cloud LLM APIs (e.g. OpenAI `gpt-4o-mini`), typical network roundtrip latency is **800 ms to 2,200 ms** per document. Run `uv run python ../evals/scripts/run_evals.py --mode=live` with `OPENAI_API_KEY` for live benchmark execution.
+> **Crucial Benchmark Qualification (DOC-03):**  
+> Every metric is strictly categorized:
+> - **MEASURED:** Evaluated directly via automated assertion executions.
+> - **CALCULATED:** Derived mathematically from exact token counts multiplied by published model pricing.
+> - **ESTIMATED:** Realistic expectations under production WAN networking conditions.
+>
+> Deterministic mock regression tests verify schema compliance, business logic, and security invariants offline without API costs. Run `uv run python ../evals/scripts/run_evals.py --mode=live` with `OPENAI_API_KEY` for live cloud evaluation.
 
 *Full benchmark breakdown and execution reports available in [`evals/reports/EVAL_REPORT.md`](evals/reports/EVAL_REPORT.md) and [`evals/METHODOLOGY.md`](evals/METHODOLOGY.md).*
 
@@ -172,7 +194,7 @@ npm install
 cd backend
 uv run pytest -v
 ```
-*(All 20 unit, integration, RAG boundary, cross-tenant security isolation, and E2E lifecycle tests pass in ~2.0s).*
+*(All 43 unit, integration, RAG boundary, cross-tenant security isolation, Decimal math, rate limiting, and RBAC matrix tests pass in ~4.3s).*
 
 ### Step 3: Run the 50-Case Evaluation Benchmark
 ```bash

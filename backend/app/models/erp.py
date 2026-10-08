@@ -1,6 +1,6 @@
 import uuid
 from decimal import Decimal
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TenantScopedMixin, TimestampMixin
 
@@ -61,6 +61,9 @@ class Invoice(Base, TenantScopedMixin, TimestampMixin):
     variance_percent: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     validation_status: Mapped[str] = mapped_column(String(50), default="CLEAN", nullable=False)  # CLEAN, EXCEPTION
 
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "invoice_number", name="uq_tenant_invoice_number"),
+    )
     lines: Mapped[list["InvoiceLine"]] = relationship("InvoiceLine", back_populates="invoice", cascade="all, delete-orphan")
 
 
