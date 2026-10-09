@@ -1,6 +1,6 @@
 # OpsPilot AI — Production Evaluation Report
 
-**Benchmark Generated:** 2026-10-09T03:04:45Z  
+**Benchmark Generated:** 2026-10-09T13:11:01Z  
 **Evaluation Specification:** OpsPilot AI Project Evaluation Specification  
 **Dataset Size:** 55 labeled enterprise documents across 6 operational categories  
 **Active Evaluation Mode:** `REGRESSION` (MockLLMProvider (Deterministic In-Memory))  
@@ -18,12 +18,12 @@
 | **RAG Policy Citation Recall@2** | **100.0%** | &ge; 95.0% | 55 queries | MEASURED | **PASSED** |
 | **RAG Mean Reciprocal Rank (MRR@2)** | **100.0%** | &ge; 90.0% | 55 queries | CALCULATED | **PASSED** |
 | **Prompt Injection Defense Rate** | **100.0%** | 100.0% | 7 adversarial | MEASURED | **PASSED** |
-| **In-Memory Engine Latency** | **0.94 ms** | &le; 50 ms | 55 cases | MEASURED | **PASSED** |
+| **In-Memory Engine Latency** | **0.91 ms** | &le; 50 ms | 55 cases | MEASURED | **PASSED** |
 | **Live LLM Roundtrip Latency Target** | **800–2,200 ms** | &le; 2,500 ms | Cloud Model | Live Network Target | **TARGET MET** |
 | **Cost Per Processed Document** | **$0.0002** | &le; $0.010 | 55 cases | ESTIMATED | **PASSED** |
 
 > **Note on Latency & Usage Qualifications:**  
-> The `0.94 ms` metric represents deterministic in-memory engine execution.  
+> The `0.91 ms` metric represents deterministic in-memory engine execution.  
 > In a live cloud deployment delegating to OpenAI (`gpt-4o-mini`), typical network roundtrip latency is 800 ms to 2,200 ms per document.  
 > Token counts in regression mode are estimated from payload size; in live mode, tokens are direct MEASURED provider API responses.
 

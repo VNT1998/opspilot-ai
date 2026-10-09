@@ -1,10 +1,12 @@
 from decimal import Decimal
 from typing import Dict, Optional, Set
+from app.core.config import get_settings
 
-# Canonical business policy constants
-PO_TOLERANCE_PERCENT = Decimal("2.00")
-PO_TOLERANCE_AMOUNT = Decimal("5.00")
-HIGH_VALUE_THRESHOLD = Decimal("10000.00")
+_settings = get_settings()
+# Canonical business policy constants bound to config
+PO_TOLERANCE_PERCENT = Decimal(str(_settings.VARIANCE_TOLERANCE_PERCENT))
+PO_TOLERANCE_AMOUNT = Decimal(str(_settings.VARIANCE_TOLERANCE_ABSOLUTE))
+HIGH_VALUE_THRESHOLD = Decimal(str(_settings.HIGH_VALUE_THRESHOLD))
 
 # Allowed Review Task state transitions
 ALLOWED_REVIEW_TRANSITIONS: Dict[str, Set[str]] = {

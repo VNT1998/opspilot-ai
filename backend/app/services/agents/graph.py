@@ -82,25 +82,44 @@ class AgentWorkflowService:
             start_t = time.time()
             text = state.get("raw_text", "")
             fname = state.get("filename", "")
-            doc_type, conf = await self.llm.classify_document(text, fname)
+            cls_res = await self.llm.classify_document(text, fname)
+            doc_type = cls_res.document_type if hasattr(cls_res, "document_type") else cls_res[0]
+            conf = cls_res.confidence if hasattr(cls_res, "confidence") else cls_res[1]
+            usage = getattr(cls_res, "usage", None)
 
             logs = list(state.get("logs", []))
             logs.append(f"Classification: Classified as '{doc_type}' with confidence {conf:.2f}")
 
-            # Capture usage telemetry from live provider when available
-            tokens_used = 0
-            cost_incurred = 0.0
-            if hasattr(self.llm, "last_usage") and self.llm.last_usage:
-                tokens_used = self.llm.last_usage.get("total_tokens", 0)
-                cost_incurred = round((tokens_used / 1000.0) * 0.0015, 6)
+            # Capture typed usage telemetry
+            in_tokens = usage.input_tokens if usage else 0
+            out_tokens = usage.output_tokens if usage else 0
+            cost_incurred = usage.cost if usage else 0.0
+            source = usage.usage_source if usage else getattr(self.llm, "usage_source", "estimated")
+            model = usage.model if usage else getattr(self.llm, "model", "mock-agent-v1")
+            provider = usage.provider if usage else getattr(self.llm, "provider", "mock")
+
+            current_in = state.get("input_tokens") or 0
+            current_out = state.get("output_tokens") or 0
+            current_cost = state.get("total_cost") or 0.0
+
+            total_in = current_in + in_tokens
+            total_out = current_out + out_tokens
+            total_cost = round(current_cost + cost_incurred, 6)
+
+            prev_source = state.get("usage_source")
+            agg_source = "provider" if (source == "provider" or prev_source == "provider") else "estimated"
 
             out = {
                 "classification": doc_type,
                 "classification_confidence": conf,
                 "logs": logs,
-                "total_tokens": state.get("total_tokens", 0) + tokens_used,
-                "total_cost": round(state.get("total_cost", 0.0) + cost_incurred, 6),
-                "usage_source": getattr(self.llm, "usage_source", "estimated"),
+                "model": model,
+                "provider": provider,
+                "input_tokens": total_in,
+                "output_tokens": total_out,
+                "total_tokens": total_in + total_out,
+                "total_cost": total_cost,
+                "usage_source": agg_source,
             }
             elapsed = int((time.time() - start_t) * 1000)
             if state.get("workflow_run_id"):
@@ -113,26 +132,45 @@ class AgentWorkflowService:
         async def extraction_node(state: OpsPilotState) -> Dict:
             start_t = time.time()
             text = state.get("raw_text", "")
-            extracted_obj, field_confs = await self.llm.extract_structured(text, InvoiceExtractionSchema)
+            ext_res = await self.llm.extract_structured(text, InvoiceExtractionSchema)
+            extracted_obj = ext_res.extracted_data if hasattr(ext_res, "extracted_data") else ext_res[0]
+            field_confs = ext_res.field_confidences if hasattr(ext_res, "field_confidences") else ext_res[1]
+            usage = getattr(ext_res, "usage", None)
 
             logs = list(state.get("logs", []))
             logs.append(
                 f"Extraction: Extracted invoice {extracted_obj.invoice_number} from vendor '{extracted_obj.vendor_name}'"
             )
 
-            tokens_used = 0
-            cost_incurred = 0.0
-            if hasattr(self.llm, "last_usage") and self.llm.last_usage:
-                tokens_used = self.llm.last_usage.get("total_tokens", 0)
-                cost_incurred = round((tokens_used / 1000.0) * 0.0015, 6)
+            in_tokens = usage.input_tokens if usage else 0
+            out_tokens = usage.output_tokens if usage else 0
+            cost_incurred = usage.cost if usage else 0.0
+            source = usage.usage_source if usage else getattr(self.llm, "usage_source", "estimated")
+            model = usage.model if usage else getattr(self.llm, "model", "mock-agent-v1")
+            provider = usage.provider if usage else getattr(self.llm, "provider", "mock")
+
+            current_in = state.get("input_tokens") or 0
+            current_out = state.get("output_tokens") or 0
+            current_cost = state.get("total_cost") or 0.0
+
+            total_in = current_in + in_tokens
+            total_out = current_out + out_tokens
+            total_cost = round(current_cost + cost_incurred, 6)
+
+            prev_source = state.get("usage_source")
+            agg_source = "provider" if (source == "provider" or prev_source == "provider") else "estimated"
 
             out = {
                 "extracted_data": extracted_obj.model_dump(),
                 "field_confidences": field_confs,
                 "logs": logs,
-                "total_tokens": state.get("total_tokens", 0) + tokens_used,
-                "total_cost": round(state.get("total_cost", 0.0) + cost_incurred, 6),
-                "usage_source": getattr(self.llm, "usage_source", "estimated"),
+                "model": model,
+                "provider": provider,
+                "input_tokens": total_in,
+                "output_tokens": total_out,
+                "total_tokens": total_in + total_out,
+                "total_cost": total_cost,
+                "usage_source": agg_source,
             }
             elapsed = int((time.time() - start_t) * 1000)
             if state.get("workflow_run_id"):
@@ -191,9 +229,6 @@ class AgentWorkflowService:
             out = {
                 "policy_citations": citations_list,
                 "logs": logs,
-                "total_tokens": state.get("total_tokens", 0),
-                "total_cost": state.get("total_cost", 0.0),
-                "usage_source": getattr(self.llm, "usage_source", "estimated"),
             }
             elapsed = int((time.time() - start_t) * 1000)
             if state.get("workflow_run_id"):
@@ -386,10 +421,12 @@ class AgentWorkflowService:
             agent_run = AgentRun(
                 tenant_id=tenant_id,
                 workflow_run_id=wf_id,
-                model="gpt-4o" if hasattr(self.llm, "model") else "mock-agent-v1",
-                input_tokens=final_state.get("total_tokens", 600),
-                output_tokens=int(final_state.get("total_tokens", 600) * 0.4),
-                total_cost=final_state.get("total_cost", 0.002),
+                model=final_state.get("model") or getattr(self.llm, "model", "mock-agent-v1"),
+                provider=final_state.get("provider") or getattr(self.llm, "provider", "mock"),
+                usage_source=final_state.get("usage_source", "estimated"),
+                input_tokens=final_state.get("input_tokens", 0),
+                output_tokens=final_state.get("output_tokens", 0),
+                total_cost=final_state.get("total_cost", 0.0),
                 duration_ms=total_duration_ms,
             )
             self.db.add(agent_run)

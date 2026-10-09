@@ -34,6 +34,7 @@ class ERPService:
         validation_status: str = "POSTED",
         line_items: Optional[List[Any]] = None,
         comments: Optional[str] = None,
+        commit: bool = False,
     ) -> Invoice:
         # 1. Idempotency Check: Was an invoice already posted for this exact document?
         doc_stmt = select(Invoice).where(
@@ -114,6 +115,11 @@ class ERPService:
                 "validation_status": validation_status,
                 "comments": comments,
             },
+            commit=commit,
         )
+
+        if commit:
+            await self.db.commit()
+            await self.db.refresh(invoice)
 
         return invoice

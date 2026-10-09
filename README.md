@@ -27,13 +27,13 @@
 | **Fail-Closed Document Router** | Rejects corrupt/empty/mismatched files | **Verified** | Zero fake/synthetic fallbacks (`tests/test_parsing.py`) |
 | **Deterministic Financial Engine** | `Numeric(18,2)` / `Decimal` + Invoice-to-PO matching | **Verified** | Boundary tests for exact 2.0% & $5.00 (`tests/test_validation.py`) |
 | **Centralized ERP Service** | `ERPService` + Idempotency & Concurrency | **Verified** | DB uniqueness & duplicate prevention (`tests/test_erp_concurrency.py`) |
-| **Human Review State Machine** | Pydantic + deterministic policy rerun | **Verified** | Strict role transitions & high-value gate (`tests/test_review_state_machine.py`) |
-| **Durable Async Queue** | Redis-backed durable queue in production; in-process queue for development/testing | **Verified** | DLQ & retry persistence (`tests/test_queue_durability.py`) |
+| **Human Review State Machine** | Pydantic + deterministic policy rerun | **Verified** | Strict role transitions, error revalidation & high-value gate (`tests/test_review_state_machine.py`, `tests/test_reviewer_revalidation.py`) |
+| **Durable Async Queue** | Redis Streams consumer groups (`XREADGROUP`, `XACK`, `XAUTOCLAIM`), dead-worker reclamation, and transactional outbox; in-process queue for offline test | **Verified** | Crash safety, PEL reclamation, outbox reconciliation & DLQ (`tests/test_queue_durability.py`) |
 | **Storage Abstraction** | S3 provider (fails closed in prod) + local dev storage | **Verified** | Content sniffing & bucket fail-closed tests (`tests/test_storage_s3.py`) |
 | **Hybrid Policy RAG** | In-memory semantic + lexical search | **Verified** | Tenant isolation & provenance citation tests (`tests/test_rag.py`) |
-| **Rate Limiting** | Sliding window rate limiter wired to API endpoints | **Verified** | 429 quota tests (`tests/test_rate_limit.py`) |
-| **Operational Telemetry** | Provider-backed token usage in live mode; estimated usage for deterministic/mock mode | **Verified** | Database aggregation without synthetic averages (`tests/test_metrics_truthfulness.py`) |
-| **Audit Ledger** | Append-oriented / tamper-evident audit trail with SHA-256 hash chaining | **Verified** | Tamper-evident hash integrity & sanitization (`tests/test_security_multitenancy.py`) |
+| **Rate Limiting** | Shared Redis-backed sliding window limiter (with trusted proxy check) + local fallback | **Verified** | 429 quota tests & replica sync (`tests/test_rate_limit.py`) |
+| **Operational Telemetry** | Provider-reported token usage & model pricing in live mode; calculated/mock usage in regression mode | **Verified** | Database aggregation without synthetic averages (`tests/test_metrics_truthfulness.py`) |
+| **Audit Ledger** | Append-oriented cryptographic hash-chained audit log with SHA-256 canonical payload hashing | **Verified** | Tamper-evident hash integrity & chain verifier (`tests/test_security_multitenancy.py`, `tests/test_erp_service.py`) |
 
 ```text
 React 19 UI (Vite + Tailwind CSS)
@@ -42,17 +42,17 @@ React 19 UI (Vite + Tailwind CSS)
 FastAPI API Gateway (ASGI)
   ├── Multi-Tenant RBAC & JWT Auth (Nexus Corp / Multi-Tenant Isolation)
   ├── Non-Blocking Ingestion (HTTP 202 Accepted < 50ms)
-  │      └── Secure Object Storage + Transactional Metadata
+  │      └── Secure Object Storage + Transactional Database Outbox
   │
   ▼
-Durable Async Worker (JobQueueWorker + Exponential Retries + DLQ)
+Durable Async Worker (Redis Streams Consumer Group + Transactional Outbox + Exponential Retries + DLQ)
   │
   ▼
 LangGraph Agent Orchestration Pipeline
-  ├── 1. Intake Node (File Validation & MIME Detection)
+  ├── 1. Intake Node (File Validation, Scanned-PDF Detection & MIME Sniffing)
   ├── 2. Classification Node (Document Type & Confidence Gate)
   ├── 3. Structured Extraction Node (Strict Pydantic Schema Enforcement)
-  ├── 4. Deterministic Validation Node (3-Way PO Reconciliation & Line Math)
+  ├── 4. Deterministic Validation Node (Invoice-to-PO Reconciliation & Line Math)
   ├── 5. RAG Policy Node (Hybrid Dense+Lexical Search & Verifiable Citations)
   ├── 6. Decision Node (Confidence Threshold & Risk Policy Gate)
   │      ├── High Confidence & Clean ──► Auto-Approve & Post to Simulated ERP
@@ -60,7 +60,7 @@ LangGraph Agent Orchestration Pipeline
   │
   ▼
 Split-Screen Human Review Console (React 19)
-  └── Reviewer Approves / Edits / Rejects ──► Resumes StateGraph ──► Emits Immutable Audit Log
+  └── Reviewer Approves / Edits / Rejects ──► Resumes StateGraph ──► Emits Cryptographically Chained Audit Entry
 ```
 
 ---
@@ -96,14 +96,14 @@ Step-by-step state graph progression trace (`Intake` &rarr; `Classification` &ra
 ---
 
 ### Compliance & Regulatory Audit Trail
-Append-only, immutable audit ledger capturing actor role, actions, timestamps, and cryptographic state mutations for regulatory compliance and enterprise governance.
+Append-oriented, cryptographically hash-chained audit log capturing actor role, actions, timestamps, and canonical payload mutations for regulatory compliance and enterprise governance.
 
 ![Compliance & Regulatory Audit Trail](docs/screenshots/audit_trail.png)
 
 ---
 
 ### Document Ingestion & 1-Click Benchmark Scenarios
-Supports drag-and-drop file ingestion (PDF, DOCX, PNG, JPG, TXT up to 20MB) alongside pre-configured 1-click test scenarios for zero-friction demonstrations.
+Supports drag-and-drop file ingestion (PDF, DOCX, PNG, JPG, TXT up to 20MB) alongside pre-configured 1-click test scenarios for zero-friction demonstrations. Note: Scanned PDFs without embedded text layers are flagged (`SCANNED_PDF_NO_TEXT`) and escalated to manual review or external OCR preprocessing.
 
 ![Document Ingestion Modal](docs/screenshots/upload_modal.png)
 
@@ -116,8 +116,8 @@ Traditional OCR templates break when supplier layouts or line formats vary. LLMs
 
 ### 2. Where is Deterministic Code Enforced?
 - **Subtotal + Tax Arithmetic:** Python verification (`round(subtotal + tax, 2) == total`).
-- **3-Way PO Reconciliation:** Direct SQL queries against the ERP `PurchaseOrder` ledger.
-- **Variance Tolerances:** Enforcing strict deviation bounds (&le; 2.0% or &le; $5.00).
+- **Invoice-to-PO Reconciliation:** Direct SQL queries against the ERP `PurchaseOrder` ledger.
+- **Variance Tolerances:** Enforcing strict deviation bounds (&le; 2.0% and &le; $5.00).
 - **High-Value Thresholds:** Mandatory human review sign-off for any invoice &ge; $10,000.
 - **Duplicate Prevention:** Cryptographic checksums and invoice number deduplication in the database.
 
@@ -196,7 +196,7 @@ npm install
 cd backend
 uv run pytest -v
 ```
-*(All 72 unit, integration, RAG boundary, cross-tenant security isolation, Decimal math, rate limiting, and RBAC matrix tests pass in ~6s).*
+*(All 94 unit, integration, RAG boundary, cross-tenant security isolation, Decimal math, rate limiting, queue durability, reviewer revalidation, and RBAC matrix tests pass in ~7s).*
 
 ### Step 3: Run the 55-Case Evaluation Benchmark
 ```bash
@@ -251,7 +251,7 @@ docker compose up --build -d
 4. **Split-Screen Human Review Console (2:30–4:00):**  
    Navigate to **Review Queue**. Examine the left pane (document evidence) and right pane (editable fields, deterministic failure diagnostics, and grounded policy citations with exact page numbers). Click **Approve & Post to ERP**.
 5. **Observability & Audit Trail (4:00–5:00):**  
-   Open **Agent Telemetry** to view the LangGraph execution trace, node latencies, and tool calls. Inspect **Audit Trail** for the immutable log entry recording the human review approval.
+   Open **Agent Telemetry** to view the LangGraph execution trace, node latencies, and tool calls. Inspect **Audit Trail** for the cryptographically chained audit log entry recording the human review approval.
 
 ---
 

@@ -151,14 +151,14 @@ async def seed_initial_demo_data():
 Corporate Accounts Payable & Invoice Verification Policy (SOP-FIN-2026)
 
 Section 1: Approval Matrix & Thresholds
-1.1 Invoices below $5,000.00 matched to an approved Purchase Order within a 2.0% or $5.00 variance tolerance are eligible for automated straight-through processing (STP).
+1.1 Invoices below $5,000.00 matched to an approved Purchase Order within a 2.0% and $5.00 variance tolerance are eligible for automated straight-through processing (STP).
 1.2 Invoices between $5,000.00 and $9,999.99 require automated matching and spot-check audit clearance.
 1.3 Invoices exceeding $10,000.00 (High-Value Threshold) strictly require mandatory Operations Manager sign-off and two-party human review regardless of AI confidence scores.
 
 --- Page 2 ---
-Section 2: Three-Way Matching Rules
+Section 2: Invoice-to-PO Matching Rules
 2.1 All vendor invoices must reference a valid and active Purchase Order (PO).
-2.2 If the variance between the invoice total and the PO line item sum exceeds 2.0% or $5.00, the invoice must be routed to the Exception Review Queue.
+2.2 If the variance between the invoice total and the PO line item sum exceeds 2.0% and $5.00 tolerance (tolerance requires variance <= 2.0% and <= $5.00), the invoice must be routed to the Exception Review Queue.
 2.3 Invoices with unverified vendor tax registration or missing vendor tax IDs must be held for compliance review.
 2.4 Duplicate invoice numbers for the same supplier are categorically rejected to prevent duplicate disbursement.
         """

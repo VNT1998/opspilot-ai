@@ -8,6 +8,8 @@ class ReviewActionRequest(BaseModel):
     action: str  # APPROVE, REJECT, EDIT, REQUEST_INFO
     comments: Optional[str] = None
     edited_fields: Optional[Dict[str, Any]] = None
+    override_policy: bool = False
+    override_reason: Optional[str] = None
 
 
 class ReviewTaskResponse(BaseModel):
@@ -33,3 +35,5 @@ class ReviewDecisionResponse(BaseModel):
     task_id: str
     status: str
     workflow_status: str
+    policy_overridden: bool = False
+    override_reason: Optional[str] = None

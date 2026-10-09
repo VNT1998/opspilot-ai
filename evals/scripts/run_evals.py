@@ -121,7 +121,7 @@ Invoices under $5,000 matching an approved PO within 2.0% tolerance are automati
 Invoices equal to or exceeding $10,000 strictly require Operations Manager approval and human sign-off.
 --- Page 2 ---
 Section 2: PO Matching
-Any PO variance exceeding 2.0% or $5.00 must be held in the Exception Review Queue.
+Any PO variance exceeding 2.0% and $5.00 tolerance (tolerance requires variance <= 2.0% and <= $5.00) must be held in the Exception Review Queue.
 Duplicate invoice numbers are strictly prohibited.
         """
         await rag_init.index_document(

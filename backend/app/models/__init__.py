@@ -8,6 +8,7 @@ from app.models.workflow import WorkflowRun, WorkflowStep, AgentRun, ToolCall
 from app.models.review import ReviewTask, ReviewAction
 from app.models.knowledge import KnowledgeDocument, KnowledgeChunk
 from app.models.audit import AuditLog
+from app.models.outbox import DocumentOutbox, OutboxStatus
 
 __all__ = [
     "Base",
@@ -30,4 +31,6 @@ __all__ = [
     "KnowledgeDocument",
     "KnowledgeChunk",
     "AuditLog",
+    "DocumentOutbox",
+    "OutboxStatus",
 ]

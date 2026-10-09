@@ -9,7 +9,7 @@ from app.api.deps import require_permission
 from app.core.errors import ForbiddenError, NotFoundError, ValidationError
 from app.core.rbac import Permission
 from app.db.session import get_db
-from app.models.document import Document
+from app.models.document import Document, DocumentPage
 from app.models.extraction import DocumentExtraction
 from app.models.review import ReviewAction, ReviewTask
 from app.models.user import User
@@ -80,6 +80,7 @@ async def approve_review_task(
     """
     Reviewer approves the document exception. Updates review state,
     posts invoice to simulated ERP system, marks document as COMPLETED, and records audit trail.
+    Enforces deterministic validation and explicit policy overrides.
     """
     stmt = select(ReviewTask).where(ReviewTask.id == task_id, ReviewTask.tenant_id == current_user.tenant_id)
     task = (await db.execute(stmt)).scalar_one_or_none()
@@ -98,11 +99,23 @@ async def approve_review_task(
     if not doc:
         raise NotFoundError("Document", task.document_id)
 
+    # Load raw text from document pages to preserve prompt-injection and security checks
+    pages_stmt = (
+        select(DocumentPage)
+        .where(DocumentPage.document_id == task.document_id, DocumentPage.tenant_id == current_user.tenant_id)
+        .order_by(DocumentPage.page_number)
+    )
+    pages = (await db.execute(pages_stmt)).scalars().all()
+    raw_text = "\n".join(p.text_content for p in pages if p.text_content) if pages else None
+
     ext_stmt = select(DocumentExtraction).where(
         DocumentExtraction.document_id == task.document_id, DocumentExtraction.tenant_id == current_user.tenant_id
     )
     ext = (await db.execute(ext_stmt)).scalar_one_or_none()
     data = {}
+    policy_overridden = False
+    override_reason = None
+
     if ext and ext.structured_data:
         data = json.loads(ext.structured_data) if isinstance(ext.structured_data, str) else ext.structured_data
 
@@ -118,7 +131,7 @@ async def approve_review_task(
                 f"Invoice total (${total_dec:,.2f}) meets or exceeds the $10,000 policy threshold and strictly requires Operations Manager or Admin sign-off."
             )
 
-        # 4. Re-run deterministic validation before ERP side effect
+        # 4. Re-run deterministic validation before ERP side effect, passing raw_text
         try:
             validated_invoice = InvoiceExtractionSchema.model_validate(data)
             validator = ValidationEngine(db)
@@ -136,12 +149,26 @@ async def approve_review_task(
                 tenant_id=current_user.tenant_id,
                 extraction=validated_invoice,
                 field_confidences=confidences,
+                raw_text=raw_text,
             )
-            if not val_res.is_clean and any(f.severity == "ERROR" for f in val_res.findings):
-                if current_user.role not in ("admin", "ops_manager"):
+
+            blocking_errors = [f for f in val_res.findings if not f.passed and f.severity == "ERROR"]
+            if blocking_errors:
+                if not body.override_policy:
+                    error_details = "; ".join(f.message for f in blocking_errors)
                     raise ValidationError(
-                        f"Validation policy error prevented approval: {val_res.routing_reason}. Explicit override requires manager or admin authority."
+                        f"Cannot approve invoice: deterministic validation checks failed ({error_details}). "
+                        f"Explicit override requires override_policy=True and a non-empty override_reason from an Operations Manager or Admin."
                     )
+                if current_user.role not in ("admin", "ops_manager"):
+                    raise ForbiddenError(
+                        "Policy override prevented: only an Operations Manager or Admin can override failed validation policies."
+                    )
+                if not body.override_reason or not body.override_reason.strip():
+                    raise ValidationError("Explicit policy override requires a non-empty override_reason.")
+                policy_overridden = True
+                override_reason = body.override_reason.strip()
+
         except (ForbiddenError, ValidationError):
             raise
         except Exception as e:
@@ -149,7 +176,11 @@ async def approve_review_task(
 
     task.status = "RESOLVED"
     task.assigned_to_user_id = current_user.id
-    task.resolution_notes = body.comments or "Approved by human reviewer."
+    task.resolution_notes = (
+        f"{body.comments or 'Approved by human reviewer.'} [Policy Override: {override_reason}]"
+        if policy_overridden
+        else (body.comments or "Approved by human reviewer.")
+    )
 
     # Record ReviewAction
     act = ReviewAction(
@@ -164,9 +195,10 @@ async def approve_review_task(
     # Update Document status
     doc.status = "APPROVED"
 
-    # Post or update Invoice in ERP via centralized ERPService
+    # Post or update Invoice in ERP via centralized ERPService (commit=False)
     if ext and data:
         erp_service = ERPService(db)
+        validation_status = "POLICY_OVERRIDDEN_APPROVED" if policy_overridden else "HUMAN_APPROVED"
         await erp_service.post_invoice(
             tenant_id=current_user.tenant_id,
             document_id=task.document_id,
@@ -177,8 +209,9 @@ async def approve_review_task(
             currency=data.get("currency", "USD"),
             source="human",
             actor_id=current_user.id,
-            validation_status="HUMAN_OVERRIDE_APPROVED",
+            validation_status=validation_status,
             comments=body.comments,
+            commit=False,
         )
 
     # Resume workflow run if present
@@ -189,26 +222,42 @@ async def approve_review_task(
         wf = (await db.execute(wf_stmt)).scalar_one_or_none()
         if wf:
             wf.status = "COMPLETED"
-            wf.result_summary = "Approved and resumed by human reviewer."
+            wf.result_summary = (
+                f"Approved with policy override: {override_reason}"
+                if policy_overridden
+                else "Approved and resumed by human reviewer."
+            )
 
-    await db.commit()
-
-    # Log audit event
+    # Log audit event in the same atomic transaction (commit=False)
     await AuditService.log_event(
         db=db,
         tenant_id=current_user.tenant_id,
-        action="REVIEW_TASK_APPROVED",
+        action="REVIEW_TASK_POLICY_OVERRIDDEN_AND_APPROVED" if policy_overridden else "REVIEW_TASK_APPROVED",
         entity_type="ReviewTask",
         entity_id=task.id,
         user_id=current_user.id,
-        after_state={"comments": body.comments, "document_id": task.document_id},
+        reason=override_reason,
+        after_state={
+            "comments": body.comments,
+            "document_id": task.document_id,
+            "policy_overridden": policy_overridden,
+            "override_reason": override_reason,
+        },
+        commit=False,
     )
 
+    # Single atomic commit for review state, ERP invoice, workflow, and audit log
+    await db.commit()
+
     return ReviewDecisionResponse(
-        message="Review approved successfully. Invoice posted to ERP.",
+        message="Invoice approved with explicit policy override."
+        if policy_overridden
+        else "Review approved successfully. Invoice posted to ERP.",
         task_id=task.id,
         status="RESOLVED",
         workflow_status="COMPLETED",
+        policy_overridden=policy_overridden,
+        override_reason=override_reason,
     )
 
 
@@ -257,8 +306,7 @@ async def reject_review_task(
             wf.status = "FAILED"
             wf.result_summary = f"Rejected by reviewer: {body.comments}"
 
-    await db.commit()
-
+    # Log audit event in the same atomic transaction (commit=False)
     await AuditService.log_event(
         db=db,
         tenant_id=current_user.tenant_id,
@@ -267,7 +315,10 @@ async def reject_review_task(
         entity_id=task.id,
         user_id=current_user.id,
         after_state={"comments": body.comments},
+        commit=False,
     )
+
+    await db.commit()
 
     return ReviewDecisionResponse(
         message="Review rejected.",
@@ -286,7 +337,8 @@ async def edit_and_approve_review_task(
 ):
     """
     Reviewer modifies extracted field values (e.g. correcting OCR errors),
-    saves corrections, approves document, and updates ERP record.
+    saves corrections, re-validates, and conditionally approves document / updates ERP.
+    Blocks ERP posting if post-edit validation fails without explicit manager override.
     """
     stmt = select(ReviewTask).where(ReviewTask.id == task_id, ReviewTask.tenant_id == current_user.tenant_id)
     task = (await db.execute(stmt)).scalar_one_or_none()
@@ -299,6 +351,20 @@ async def edit_and_approve_review_task(
         )
 
     edited = body.edited_fields or {}
+
+    # Load document and pages to reconstruct raw_text
+    doc_stmt = select(Document).where(Document.id == task.document_id, Document.tenant_id == current_user.tenant_id)
+    doc = (await db.execute(doc_stmt)).scalar_one_or_none()
+    if not doc:
+        raise NotFoundError("Document", task.document_id)
+
+    pages_stmt = (
+        select(DocumentPage)
+        .where(DocumentPage.document_id == task.document_id, DocumentPage.tenant_id == current_user.tenant_id)
+        .order_by(DocumentPage.page_number)
+    )
+    pages = (await db.execute(pages_stmt)).scalars().all()
+    raw_text = "\n".join(p.text_content for p in pages if p.text_content) if pages else None
 
     # Update DocumentExtraction structured data
     ext_stmt = select(DocumentExtraction).where(
@@ -317,7 +383,14 @@ async def edit_and_approve_review_task(
     except Exception as val_err:
         raise ValidationError(f"Edited fields failed schema validation: {str(val_err)}")
 
-    # 2. Re-run deterministic ValidationEngine
+    # 2. Check role authorization on high-value threshold using Decimal
+    total_dec = Decimal(str(validated_invoice.total))
+    if requires_high_value_approval(total_dec) and current_user.role not in ("admin", "ops_manager"):
+        raise ForbiddenError(
+            f"Edited invoice total (${total_dec:,.2f}) meets or exceeds the $10,000 policy threshold and strictly requires Operations Manager or Admin sign-off."
+        )
+
+    # 3. Re-run deterministic ValidationEngine with raw_text
     validator = ValidationEngine(db)
     confidences = {}
     if ext.field_confidences:
@@ -331,22 +404,37 @@ async def edit_and_approve_review_task(
         tenant_id=current_user.tenant_id,
         extraction=validated_invoice,
         field_confidences=confidences,
+        raw_text=raw_text,
     )
 
-    # 3. Check role authorization on high-value threshold using Decimal
-    total_dec = Decimal(str(validated_invoice.total))
-    if requires_high_value_approval(total_dec) and current_user.role not in ("admin", "ops_manager"):
-        raise ForbiddenError(
-            f"Edited invoice total (${total_dec:,.2f}) meets or exceeds the $10,000 policy threshold and strictly requires Operations Manager or Admin sign-off."
-        )
+    blocking_errors = [f for f in val_res.findings if not f.passed and f.severity == "ERROR"]
+    policy_overridden = False
+    override_reason = None
+
+    if blocking_errors:
+        if not body.override_policy:
+            error_details = "; ".join(f.message for f in blocking_errors)
+            raise ValidationError(
+                f"Post-edit validation failed ({error_details}). "
+                f"ERP posting is blocked unless explicit override is authorized with override_policy=True and a valid override_reason by an Operations Manager or Admin."
+            )
+        if current_user.role not in ("admin", "ops_manager"):
+            raise ForbiddenError(
+                "Policy override prevented: only an Operations Manager or Admin can override failed validation policies."
+            )
+        if not body.override_reason or not body.override_reason.strip():
+            raise ValidationError("Explicit policy override requires a non-empty override_reason.")
+        policy_overridden = True
+        override_reason = body.override_reason.strip()
 
     # 4. Update DocumentExtraction with revalidated state and findings
     ext.structured_data = json.dumps(validated_invoice.model_dump())
     ext.is_valid = val_res.is_clean
     ext.validation_findings = json.dumps([f.model_dump() for f in val_res.findings])
 
-    # 5. Post to ERP via centralized ERPService
+    # 5. Post to ERP via centralized ERPService (commit=False)
     erp_service = ERPService(db)
+    validation_status = "HUMAN_EDITED_POLICY_OVERRIDDEN" if policy_overridden else "HUMAN_EDITED_APPROVED"
     await erp_service.post_invoice(
         tenant_id=current_user.tenant_id,
         document_id=task.document_id,
@@ -357,14 +445,19 @@ async def edit_and_approve_review_task(
         currency=validated_invoice.currency,
         source="human",
         actor_id=current_user.id,
-        validation_status="HUMAN_EDITED_APPROVED",
+        validation_status=validation_status,
         line_items=validated_invoice.line_items,
         comments=body.comments,
+        commit=False,
     )
 
     task.status = "RESOLVED"
     task.assigned_to_user_id = current_user.id
-    task.resolution_notes = f"Edited fields: {list(edited.keys())}. {body.comments or ''}"
+    task.resolution_notes = (
+        f"Edited fields: {list(edited.keys())}. {body.comments or ''} [Policy Override: {override_reason}]"
+        if policy_overridden
+        else f"Edited fields: {list(edited.keys())}. {body.comments or ''}"
+    )
 
     act = ReviewAction(
         tenant_id=current_user.tenant_id,
@@ -376,10 +469,7 @@ async def edit_and_approve_review_task(
     )
     db.add(act)
 
-    doc_stmt = select(Document).where(Document.id == task.document_id, Document.tenant_id == current_user.tenant_id)
-    doc = (await db.execute(doc_stmt)).scalar_one_or_none()
-    if doc:
-        doc.status = "COMPLETED"
+    doc.status = "COMPLETED"
 
     # Resume workflow run if present
     if task.workflow_run_id:
@@ -389,23 +479,34 @@ async def edit_and_approve_review_task(
         wf = (await db.execute(wf_stmt)).scalar_one_or_none()
         if wf:
             wf.status = "COMPLETED"
-            wf.result_summary = "Edited, revalidated, and approved by human reviewer."
-
-    await db.commit()
+            wf.result_summary = (
+                f"Edited and approved with policy override: {override_reason}"
+                if policy_overridden
+                else "Edited, revalidated, and approved by human reviewer."
+            )
 
     await AuditService.log_event(
         db=db,
         tenant_id=current_user.tenant_id,
-        action="REVIEW_TASK_EDITED_AND_APPROVED",
+        action="REVIEW_TASK_EDITED_AND_POLICY_OVERRIDDEN" if policy_overridden else "REVIEW_TASK_EDITED_AND_APPROVED",
         entity_type="ReviewTask",
         entity_id=task.id,
         user_id=current_user.id,
-        after_state={"diffs": edited, "comments": body.comments},
+        reason=override_reason,
+        after_state={"diffs": edited, "comments": body.comments, "policy_overridden": policy_overridden},
+        commit=False,
     )
 
+    # Atomic single commit
+    await db.commit()
+
     return ReviewDecisionResponse(
-        message="Corrections saved and approved successfully.",
+        message="Corrections saved with policy override."
+        if policy_overridden
+        else "Corrections saved and approved successfully.",
         task_id=task.id,
         status="RESOLVED",
         workflow_status="COMPLETED",
+        policy_overridden=policy_overridden,
+        override_reason=override_reason,
     )

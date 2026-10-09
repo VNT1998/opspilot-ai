@@ -32,5 +32,10 @@ class OpsPilotState(TypedDict, total=False):
     # Telemetry
     logs: List[str]
     tool_calls_executed: List[Dict[str, Any]]
+    model: str
+    provider: str
+    usage_source: str
+    input_tokens: int
+    output_tokens: int
     total_tokens: int
     total_cost: float

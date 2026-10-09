@@ -41,7 +41,8 @@ venv.bak/
 *.sqlite
 *.sqlite3
 backend/opspilot.db
-backend/data/storage/tenant_*
+backend/data/
+data/
 
 # Frontend & Node
 node_modules/

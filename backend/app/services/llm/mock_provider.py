@@ -4,6 +4,8 @@ from typing import Dict, List, Tuple, Type, TypeVar
 import numpy as np
 from pydantic import BaseModel
 from app.schemas.extraction import InvoiceExtractionSchema, InvoiceLineSchema
+from app.services.llm.base import ClassificationResult, ExtractionResult, GenerateResult
+from app.services.llm.pricing import LLMUsageResult, calculate_call_cost
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -20,27 +22,56 @@ class MockLLMProvider:
     provider: str = "mock"
     model: str = "mock-agent-v1"
 
-    async def generate(self, prompt: str, system: str = "") -> str:
+    async def generate(self, prompt: str, system: str = "") -> GenerateResult:
         # Check for prompt injection attempts in prompt
         lower_prompt = prompt.lower()
         if "ignore previous instructions" in lower_prompt or "ignore all instructions" in lower_prompt:
-            return "Security Alert: Detected untrusted instruction attempting system override. Request declined."
+            content = "Security Alert: Detected untrusted instruction attempting system override. Request declined."
+        elif "summarize" in lower_prompt:
+            content = "OpsPilot AI processed this document according to enterprise business policy. All mandatory fields have been reconciled."
+        else:
+            content = "OpsPilot Agent completed execution with verified findings."
 
-        if "summarize" in lower_prompt:
-            return "OpsPilot AI processed this document according to enterprise business policy. All mandatory fields have been reconciled."
-        return "OpsPilot Agent completed execution with verified findings."
+        in_tok = max(len(prompt.split()) * 4 // 3, 10)
+        out_tok = max(len(content.split()) * 4 // 3, 10)
+        usage = LLMUsageResult(
+            provider="mock",
+            model=self.model,
+            input_tokens=in_tok,
+            output_tokens=out_tok,
+            total_tokens=in_tok + out_tok,
+            cost=calculate_call_cost(self.model, in_tok, out_tok),
+            usage_source="estimated",
+            latency_ms=1,
+        )
+        return GenerateResult(content, usage)
 
     async def classify_document(self, text: str, filename: str) -> Tuple[str, float]:
         combined = f"{filename} {text}".lower()
         if "invoice" in combined or "inv-" in combined or "bill to" in combined or "amount due" in combined:
-            return ("invoice", 0.96)
-        if "purchase order" in combined or "po-" in combined or "order confirmation" in combined:
-            return ("purchase_order", 0.94)
-        if "agreement" in combined or "contract" in combined or "terms and conditions" in combined:
-            return ("contract", 0.92)
-        if "receipt" in combined or "payment receipt" in combined:
-            return ("receipt", 0.91)
-        return ("other", 0.70)
+            cls_type, conf = ("invoice", 0.96)
+        elif "purchase order" in combined or "po-" in combined or "order confirmation" in combined:
+            cls_type, conf = ("purchase_order", 0.94)
+        elif "agreement" in combined or "contract" in combined or "terms and conditions" in combined:
+            cls_type, conf = ("contract", 0.92)
+        elif "receipt" in combined or "payment receipt" in combined:
+            cls_type, conf = ("receipt", 0.91)
+        else:
+            cls_type, conf = ("other", 0.70)
+
+        in_tok = max(len(combined.split()) * 4 // 3, 20)
+        out_tok = 15
+        usage = LLMUsageResult(
+            provider="mock",
+            model=self.model,
+            input_tokens=in_tok,
+            output_tokens=out_tok,
+            total_tokens=in_tok + out_tok,
+            cost=calculate_call_cost(self.model, in_tok, out_tok),
+            usage_source="estimated",
+            latency_ms=1,
+        )
+        return ClassificationResult(cls_type, conf, usage)
 
     async def extract_structured(self, text: str, schema: Type[T]) -> Tuple[T, Dict[str, float]]:
         """Extracts structured invoice or PO data with realistic field confidence scores."""
@@ -133,7 +164,19 @@ class MockLLMProvider:
             "line_items": round(base_conf - 0.05, 2),
         }
 
-        return (data, confidences)
+        in_tok = max(len(text.split()) * 4 // 3, 50)
+        out_tok = 120
+        usage = LLMUsageResult(
+            provider="mock",
+            model=self.model,
+            input_tokens=in_tok,
+            output_tokens=out_tok,
+            total_tokens=in_tok + out_tok,
+            cost=calculate_call_cost(self.model, in_tok, out_tok),
+            usage_source="estimated",
+            latency_ms=2,
+        )
+        return ExtractionResult(data, confidences, usage)
 
     async def embed(self, text: str) -> List[float]:
         """

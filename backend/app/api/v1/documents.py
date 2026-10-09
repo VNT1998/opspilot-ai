@@ -11,6 +11,7 @@ from app.core.rate_limit import rate_limit
 from app.core.rbac import Permission
 from app.db.session import get_db
 from app.models.document import Document
+from app.models.outbox import DocumentOutbox, OutboxStatus
 from app.models.user import User
 from app.schemas.document import DocumentListResponse, DocumentReprocessRequest, DocumentResponse
 from app.services.audit.service import AuditService
@@ -72,6 +73,19 @@ async def upload_document(
             status="QUEUED",
         )
         db.add(doc)
+        await db.flush()
+
+        # Audit log in same transaction
+        await AuditService.log_event(
+            db=db,
+            tenant_id=current_user.tenant_id,
+            action="DOCUMENT_UPLOADED",
+            entity_type="Document",
+            entity_id=doc.id,
+            user_id=current_user.id,
+            after_state={"filename": doc.filename, "size": doc.file_size},
+            commit=False,
+        )
         await db.commit()
         await db.refresh(doc)
     except Exception:
@@ -82,18 +96,7 @@ async def upload_document(
             pass
         raise
 
-    # Audit log
-    await AuditService.log_event(
-        db=db,
-        tenant_id=current_user.tenant_id,
-        action="DOCUMENT_UPLOADED",
-        entity_type="Document",
-        entity_id=doc.id,
-        user_id=current_user.id,
-        after_state={"filename": doc.filename, "size": doc.file_size},
-    )
-
-    # Enqueue processing job to asynchronous worker
+    # Enqueue processing job to asynchronous worker (atomic outbox creation + dispatch)
     worker = get_job_worker()
     job_id = await worker.enqueue_job(
         document_id=doc.id,
@@ -212,10 +215,18 @@ async def reprocess_document(
     if not doc:
         raise NotFoundError("Document", document_id)
 
-    if doc.status in ("QUEUED", "PROCESSING"):
+    if doc.status in ("QUEUED", "PROCESSING", "PENDING_DISPATCH"):
         raise ValidationError(
             f"Document '{document_id}' is already actively queued or processing (status: {doc.status})."
         )
+
+    outbox_stmt = select(DocumentOutbox).where(
+        DocumentOutbox.document_id == document_id,
+        DocumentOutbox.status == OutboxStatus.PENDING.value,
+    )
+    pending_outbox = (await db.execute(outbox_stmt)).scalar_one_or_none()
+    if pending_outbox:
+        raise ValidationError(f"Document '{document_id}' has a pending dispatch in the outbox.")
 
     doc.status = "QUEUED"
     await db.commit()

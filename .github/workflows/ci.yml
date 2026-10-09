@@ -10,6 +10,16 @@ jobs:
   backend-tests-and-evals:
     name: Backend Pytest & AI Evaluations
     runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -38,7 +48,9 @@ jobs:
           cd backend
           uv run alembic upgrade head
 
-      - name: Run Backend Pytest Suite (72 Unit, Integration & Security Tests)
+      - name: Run Backend Pytest Suite (95 Unit, Integration & Security Tests)
+        env:
+          REDIS_URL: redis://localhost:6379/0
         run: |
           cd backend
           uv run pytest -v

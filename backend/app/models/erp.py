@@ -71,7 +71,10 @@ class Invoice(Base, TenantScopedMixin, TimestampMixin):
     variance_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
     validation_status: Mapped[str] = mapped_column(String(50), default="CLEAN", nullable=False)  # CLEAN, EXCEPTION
 
-    __table_args__ = (UniqueConstraint("tenant_id", "invoice_number", name="uq_tenant_invoice_number"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "invoice_number", name="uq_tenant_invoice_number"),
+        UniqueConstraint("tenant_id", "document_id", name="uq_tenant_document_id"),
+    )
     lines: Mapped[list["InvoiceLine"]] = relationship(
         "InvoiceLine", back_populates="invoice", cascade="all, delete-orphan"
     )

@@ -44,7 +44,7 @@ The benchmark suite consists of **55 labeled enterprise documents** (`evals/data
 | Category | Cases | Operational Characteristics & Failure Scenarios Tested |
 |---|:---:|---|
 | `clean_standard` | 20 | Clean vendor invoices with matching PO numbers, matching totals within corporate tolerance ($1,449.10 – $1,450.90 vs PO-9001 of $1,450.00), valid dates, and compliant tax calculations. Qualifies for **Straight-Through Processing (STP)**. |
-| `po_variance_exceeded` | 10 | Pricing discrepancies, shipping surcharges, or quantity variances exceeding the $5.00 or 2.0% corporate variance tolerance threshold. Flagged and routed to the **Human Review Queue**. |
+| `po_variance_exceeded` | 10 | Pricing discrepancies, shipping surcharges, or quantity variances exceeding the corporate variance tolerance threshold (variance > 2.0% and > $5.00). Flagged and routed to the **Human Review Queue**. |
 | `high_value_policy` | 8 | Large invoices exceeding the $10,000 threshold (e.g. $12,500 – $48,000). Regardless of PO match accuracy, corporate governance SOP-FIN-2026 mandates **Operations Manager sign-off**. |
 | `poor_scan_quality` | 6 | Degraded scan artifacts, faint dot-matrix printing, or blurry OCR with field confidence levels dropping below 85%. Triggers low-confidence review flags. |
 | `math_discrepancy` | 4 | Invoices where $\text{Subtotal} + \text{Tax} \neq \text{Total Amount Due}$ due to vendor billing errors or rounding discrepancies $> \$0.05$. Stopped before ERP posting. |

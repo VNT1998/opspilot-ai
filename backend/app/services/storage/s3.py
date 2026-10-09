@@ -29,12 +29,21 @@ class S3StorageProvider(StorageProvider):
     def _get_client(self):
         try:
             import boto3
+            from botocore.config import Config
 
-            return boto3.client(
-                "s3",
-                region_name=self.region,
-                endpoint_url=self.endpoint_url,
-            )
+            cfg = Config(s3={"addressing_style": settings.S3_ADDRESSING_STYLE})
+            access_key = os.getenv("AWS_ACCESS_KEY_ID")
+            secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+            client_kwargs = {
+                "region_name": self.region,
+                "endpoint_url": self.endpoint_url,
+                "config": cfg,
+            }
+            if access_key and secret_key:
+                client_kwargs["aws_access_key_id"] = access_key
+                client_kwargs["aws_secret_access_key"] = secret_key
+
+            return boto3.client("s3", **client_kwargs)
         except Exception as e:
             raise StorageError(f"Failed to initialize S3 client: {e}")
 

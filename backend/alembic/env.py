@@ -21,6 +21,7 @@ import app.models.document  # noqa
 import app.models.erp  # noqa
 import app.models.extraction  # noqa
 import app.models.knowledge  # noqa
+import app.models.outbox  # noqa
 import app.models.review  # noqa
 import app.models.tenant  # noqa
 import app.models.user  # noqa

@@ -119,11 +119,15 @@ def test_production_secret_key_validation():
     # Valid production settings should succeed
     valid_settings = Settings(
         ENVIRONMENT="production",
+        DEBUG=False,
         SECRET_KEY="a-very-long-production-grade-secret-key-32chars!",
+        DATABASE_URL="postgresql+asyncpg://prod_user:prod_pass@db:5432/opspilot",
+        WORKER_MODE="redis",
         DEFAULT_LLM_PROVIDER="openai",
         OPENAI_API_KEY="sk-prod-test-key-12345",
         ENABLE_DEMO_SEED=False,
         USE_IN_MEMORY_QUEUE=False,
         STORAGE_TYPE="s3",
+        CORS_ORIGINS=["https://app.opspilot.com"],
     )
     assert valid_settings.ENVIRONMENT == "production"

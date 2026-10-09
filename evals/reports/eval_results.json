@@ -1,6 +1,6 @@
 {
   "summary": {
-    "benchmark_timestamp": "2026-10-09T03:04:45Z",
+    "benchmark_timestamp": "2026-10-09T13:11:01Z",
     "mode": "regression",
     "provider": "MockLLMProvider (Deterministic In-Memory)",
     "usage_source": "ESTIMATED",
@@ -12,7 +12,7 @@
     "rag_mrr_pct": 100.0,
     "prompt_injection_defense_rate_pct": 100.0,
     "total_adversarial_cases": 7,
-    "measured_avg_latency_ms": 0.94,
+    "measured_avg_latency_ms": 0.91,
     "target_live_llm_latency_range_ms": "800 - 2,200 ms",
     "avg_cost_per_document_usd": 0.0002,
     "breakdown_by_category": {
@@ -34,7 +34,7 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 4.59,
+      "latency_ms": 3.94,
       "tokens": 187,
       "cost_usd": 0.00028
     },
@@ -47,7 +47,7 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 1.22,
+      "latency_ms": 1.05,
       "tokens": 187,
       "cost_usd": 0.00028
     },
@@ -60,7 +60,7 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 1.02,
+      "latency_ms": 0.96,
       "tokens": 187,
       "cost_usd": 0.00028
     },
@@ -73,7 +73,7 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 1.0,
+      "latency_ms": 0.91,
       "tokens": 187,
       "cost_usd": 0.00028
     },
@@ -86,7 +86,7 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.91,
+      "latency_ms": 0.87,
       "tokens": 187,
       "cost_usd": 0.00028
     },
@@ -99,7 +99,7 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.88,
+      "latency_ms": 0.98,
       "tokens": 187,
       "cost_usd": 0.00028
     },
@@ -112,7 +112,7 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.86,
+      "latency_ms": 0.84,
       "tokens": 187,
       "cost_usd": 0.00028
     },
@@ -125,7 +125,7 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.84,
+      "latency_ms": 0.86,
       "tokens": 185,
       "cost_usd": 0.000278
     },
@@ -138,7 +138,7 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.85,
+      "latency_ms": 0.84,
       "tokens": 187,
       "cost_usd": 0.00028
     },
@@ -151,7 +151,7 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.87,
+      "latency_ms": 0.79,
       "tokens": 187,
       "cost_usd": 0.00028
     },
@@ -164,7 +164,7 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.86,
+      "latency_ms": 0.82,
       "tokens": 187,
       "cost_usd": 0.00028
     },
@@ -177,7 +177,7 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.85,
+      "latency_ms": 0.89,
       "tokens": 187,
       "cost_usd": 0.00028
     },
@@ -190,7 +190,7 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.86,
+      "latency_ms": 1.07,
       "tokens": 187,
       "cost_usd": 0.00028
     },
@@ -203,7 +203,7 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.83,
+      "latency_ms": 0.89,
       "tokens": 187,
       "cost_usd": 0.00028
     },
@@ -216,7 +216,7 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.85,
+      "latency_ms": 0.86,
       "tokens": 187,
       "cost_usd": 0.00028
     },
@@ -229,7 +229,7 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.9,
+      "latency_ms": 0.78,
       "tokens": 187,
       "cost_usd": 0.00028
     },
@@ -242,7 +242,7 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.97,
+      "latency_ms": 0.78,
       "tokens": 187,
       "cost_usd": 0.00028
     },
@@ -255,7 +255,7 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.91,
+      "latency_ms": 0.95,
       "tokens": 187,
       "cost_usd": 0.00028
     },
@@ -268,7 +268,7 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.85,
+      "latency_ms": 0.92,
       "tokens": 185,
       "cost_usd": 0.000278
     },
@@ -281,7 +281,7 @@
       "actual_outcome": "APPROVE_AUTOMATICALLY",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.84,
+      "latency_ms": 0.87,
       "tokens": 187,
       "cost_usd": 0.00028
     },
@@ -294,7 +294,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.84,
+      "latency_ms": 0.86,
       "tokens": 150,
       "cost_usd": 0.000225
     },
@@ -320,7 +320,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.88,
+      "latency_ms": 0.82,
       "tokens": 150,
       "cost_usd": 0.000225
     },
@@ -333,7 +333,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.88,
+      "latency_ms": 0.86,
       "tokens": 150,
       "cost_usd": 0.000225
     },
@@ -346,7 +346,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.84,
+      "latency_ms": 0.81,
       "tokens": 150,
       "cost_usd": 0.000225
     },
@@ -359,7 +359,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.83,
+      "latency_ms": 0.85,
       "tokens": 150,
       "cost_usd": 0.000225
     },
@@ -372,7 +372,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.83,
+      "latency_ms": 0.81,
       "tokens": 150,
       "cost_usd": 0.000225
     },
@@ -385,7 +385,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.83,
+      "latency_ms": 0.78,
       "tokens": 150,
       "cost_usd": 0.000225
     },
@@ -398,7 +398,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.82,
+      "latency_ms": 0.87,
       "tokens": 149,
       "cost_usd": 0.000223
     },
@@ -411,7 +411,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.82,
+      "latency_ms": 0.81,
       "tokens": 150,
       "cost_usd": 0.000225
     },
@@ -424,7 +424,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.82,
+      "latency_ms": 0.78,
       "tokens": 163,
       "cost_usd": 0.000245
     },
@@ -437,7 +437,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.82,
+      "latency_ms": 0.77,
       "tokens": 163,
       "cost_usd": 0.000245
     },
@@ -450,7 +450,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.82,
+      "latency_ms": 0.79,
       "tokens": 162,
       "cost_usd": 0.000243
     },
@@ -476,7 +476,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.9,
+      "latency_ms": 0.89,
       "tokens": 163,
       "cost_usd": 0.000245
     },
@@ -489,7 +489,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.84,
+      "latency_ms": 0.79,
       "tokens": 163,
       "cost_usd": 0.000245
     },
@@ -515,7 +515,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.86,
+      "latency_ms": 0.79,
       "tokens": 163,
       "cost_usd": 0.000245
     },
@@ -541,7 +541,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.601,
-      "latency_ms": 0.92,
+      "latency_ms": 0.8,
       "tokens": 76,
       "cost_usd": 0.000114
     },
@@ -554,7 +554,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.601,
-      "latency_ms": 0.85,
+      "latency_ms": 0.81,
       "tokens": 76,
       "cost_usd": 0.000114
     },
@@ -567,7 +567,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.601,
-      "latency_ms": 0.82,
+      "latency_ms": 0.81,
       "tokens": 76,
       "cost_usd": 0.000114
     },
@@ -580,7 +580,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.601,
-      "latency_ms": 0.83,
+      "latency_ms": 0.85,
       "tokens": 76,
       "cost_usd": 0.000114
     },
@@ -593,7 +593,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.601,
-      "latency_ms": 0.82,
+      "latency_ms": 0.94,
       "tokens": 76,
       "cost_usd": 0.000114
     },
@@ -606,7 +606,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.84,
+      "latency_ms": 0.99,
       "tokens": 102,
       "cost_usd": 0.000153
     },
@@ -632,7 +632,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.83,
+      "latency_ms": 0.82,
       "tokens": 102,
       "cost_usd": 0.000153
     },
@@ -645,7 +645,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.86,
+      "latency_ms": 0.81,
       "tokens": 102,
       "cost_usd": 0.000153
     },
@@ -658,7 +658,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.83,
+      "latency_ms": 0.78,
       "tokens": 121,
       "cost_usd": 0.000181
     },
@@ -671,7 +671,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.84,
+      "latency_ms": 0.79,
       "tokens": 117,
       "cost_usd": 0.000176
     },
@@ -684,7 +684,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.81,
+      "latency_ms": 0.78,
       "tokens": 174,
       "cost_usd": 0.000261
     },
@@ -710,7 +710,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.81,
+      "latency_ms": 0.88,
       "tokens": 174,
       "cost_usd": 0.000261
     },
@@ -723,7 +723,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.86,
+      "latency_ms": 0.77,
       "tokens": 177,
       "cost_usd": 0.000266
     },
@@ -736,7 +736,7 @@
       "actual_outcome": "SEND_TO_REVIEW",
       "outcome_correct": true,
       "confidence_score": 0.941,
-      "latency_ms": 0.99,
+      "latency_ms": 0.8,
       "tokens": 179,
       "cost_usd": 0.000269
     }
